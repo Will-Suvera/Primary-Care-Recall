@@ -9,6 +9,19 @@
       {
         "attendees": [
           "Will Gao",
+          "Ellena"
+        ],
+        "date": null,
+        "outcome": null,
+        "practice_name": "Oaklands Medical Centre",
+        "problems": null,
+        "site_address": "St Ann\u2019s Walk, Middlewich, Cheshire, CW10 9BE",
+        "status": "proposed",
+        "times": null
+      },
+      {
+        "attendees": [
+          "Will Gao",
           "CJ Moore"
         ],
         "date": "2026-07-14",
