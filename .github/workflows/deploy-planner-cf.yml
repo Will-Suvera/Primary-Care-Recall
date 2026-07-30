@@ -24,9 +24,7 @@ name: Deploy Planner (Cloudflare Pages)
 
 on:
   push:
-    # feat/dashboard-aurora-redesign is TEMPORARY — to ship the first deploy
-    # before the main merge. Remove it from this list once merged to main.
-    branches: [main, feat/dashboard-aurora-redesign]
+    branches: [main]
     paths:
       - 'apps/primary-care-tech-overview/**'
       - 'pipeline/**'

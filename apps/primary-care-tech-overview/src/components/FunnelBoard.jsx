@@ -196,7 +196,7 @@ export default function FunnelBoard({ data, auth = null }) {
     <div className="board flow2">
       <header className="ov-head">
         <div className="ov-headings">
-          <h1 className="ov-title">Primary Care Tech Overview</h1>
+          <h1 className="ov-title">Recalls Overview</h1>
           <p className="ov-sub">{PAGE_SUB}</p>
         </div>
         <div className="ov-head-right">

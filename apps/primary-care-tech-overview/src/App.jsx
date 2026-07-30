@@ -13,7 +13,7 @@ function SignInGate({ auth }) {
     <div className="shell">
       <div className="signin-gate">
         <img className="signin-logo" src={LOGO} alt="Suvera" />
-        <h1>Primary Care Tech Overview</h1>
+        <h1>Recalls Overview</h1>
         <p>Sign in with your <b>@suvera.co.uk</b> Google account to continue.</p>
         <div ref={ref} />
       </div>
@@ -24,7 +24,7 @@ function SignInGate({ auth }) {
 const tabFromUrl = () =>
   new URLSearchParams(window.location.search).get("tab") === "onboarding" ? "onboarding" : "overview";
 
-// Single-page Primary Care Tech Overview with two tabs (?tab=overview|onboarding):
+// Single-page Recalls Overview with two tabs (?tab=overview|onboarding):
 //  • Overview — the read-only funnel analytics ("where everyone's at"); the
 //    interactive onboarding checklist also lives in its DPA-Signed slide-over.
 //  • Onboarding Hub — the action surface for DPA-signed-onwards practices; step
@@ -75,7 +75,7 @@ export default function App() {
       <div className="shell">
         <div className="signin-gate">
           <img className="signin-logo" src={LOGO} alt="Suvera" />
-          <h1>Primary Care Tech Overview</h1>
+          <h1>Recalls Overview</h1>
           {authErr ? (
             <>
               <p>Your session wasn’t accepted. Sign in again with your <b>@suvera.co.uk</b> Google account.</p>
