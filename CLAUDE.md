@@ -50,7 +50,7 @@ Data refreshes run automatically every 5 minutes via GitHub Actions cron
 
 | File | Source | Shape | Written by |
 |---|---|---|---|
-| `practices_geocoded.json` | NHS ODS API + postcodes.io + NHS Digital (patients) | `[{ods, name, postcode, lat, lng, pcn_name, pcn_code, icb, patients}]` | `pipeline/refresh_data.py --practices` (ods/name/postcode/lat/lng), `refresh_patient_sizes()` (patients). `pcn_name`/`pcn_code`/`icb` are legacy static fields — not yet refreshed. |
+| `practices_geocoded.json` | NHS ODS API + postcodes.io + NHS Digital (patients) + ODS ePCN | `[{ods, name, postcode, lat, lng, pcn_name, pcn_code, icb, patients}]` | `pipeline/refresh_data.py --practices` (ods/name/postcode/lat/lng), `refresh_patient_sizes()` (patients), `refresh_pcn_icb()` (pcn_name/pcn_code/icb from the live ODS ePCN report via `ods_pcn.py`, 24h cache, runs on the 5-min cron — replaced the legacy name-joined static fields 2026-07-31). |
 | `waitlist_ods.json` | HubSpot list 1535 → expanded PCNs | `["A12345", ...]` sorted | `pipeline/refresh_data.py --waitlist` |
 | `live_customers.json` | Google Sheet onboarding tracker | `["A12345", ...]` sorted | `pipeline/refresh_data.py` (subset where Status=="Live") |
 | `live_customers_full_planner.json` | Manually curated | `["A12345", ...]` | hand-edited |
