@@ -1096,6 +1096,58 @@ def refresh_patient_sizes():
         json.dump(practices, f)
 
 
+def refresh_pcn_icb():
+    """Overwrite pcn_name/pcn_code/icb in practices_geocoded.json from the
+    live ODS ePCN report (24h disk cache in ods_pcn.py — cheap on the 5-min
+    cron, same pattern as refresh_patient_sizes).
+
+    The legacy static fields came from an old name-based join, so ~1,600
+    practices carried another same-named practice's ICB (e.g. Westgate
+    Surgery B86029 in Otley wearing the Kent Westgate's Kent & Medway ICB)
+    and pre-merger ICB names. Practices absent from the ePCN report (no
+    current PCN membership) keep their existing fields — stale beats blank.
+    """
+    from ods_pcn import OdsPcnError, fetch_pcn_membership, icb_from_sicbl_name  # noqa: F401
+
+    def _display_pcn(name):
+        keep = {"PCN", "NHS", "ICB", "GP"}
+        return " ".join(
+            w if w.upper() in keep else (w[:1].upper() + w[1:].lower())
+            for w in name.split()
+        )
+
+    try:
+        mapping = fetch_pcn_membership()
+    except OdsPcnError as e:
+        print(f"  WARN: ePCN fetch failed, keeping existing PCN/ICB fields: {e}")
+        return
+
+    practices_path = DATA_DIR / "practices_geocoded.json"
+    with open(practices_path) as f:
+        practices = json.load(f)
+
+    changed = 0
+    for p in practices:
+        m = mapping.get(p["ods"].upper())
+        if not m:
+            continue
+        new = {
+            "pcn_code": m["pcn_code"],
+            "pcn_name": _display_pcn(m["pcn_name"]),
+            "icb": m["icb"],
+        }
+        if any(p.get(k) != v for k, v in new.items()):
+            p.update(new)
+            changed += 1
+
+    if changed:
+        with open(practices_path, "w") as f:
+            json.dump(practices, f)
+        print(f"  PCN/ICB refreshed from ODS ePCN: {changed} practices updated")
+    else:
+        print("  PCN/ICB already current with ODS ePCN")
+
+
 def refresh_recalls():
     """Fetch recall + bloods data from Omni exports and save as JSON.
 
@@ -1234,6 +1286,9 @@ def main():
     # to call on every mode including --waitlist.
     if mode in ("--all", "--practices", "--waitlist"):
         refresh_patient_sizes()
+        # PCN + ICB from the live ODS ePCN report (also 24h-cached) — the
+        # legacy static fields mis-assign ~1,600 practices (name-join bug).
+        refresh_pcn_icb()
 
     # Check Google Sheet for new live practices BEFORE waitlist refresh,
     # so any newly-live practices are excluded from the waitlist.
