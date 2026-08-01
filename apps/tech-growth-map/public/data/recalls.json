@@ -19,129 +19,19 @@
     },
     "practices_this_month": [
       {
-        "name": "Ashton Medical Group",
-        "count": 292,
-        "ods": "P89008"
-      },
-      {
-        "name": "Wychall Lane Surgery",
-        "count": 255,
-        "ods": "M85071"
-      },
-      {
-        "name": "Southborough Lane Surgery",
-        "count": 195,
-        "ods": "G84023"
-      },
-      {
-        "name": "Cape Hill Medical Centre",
-        "count": 173,
-        "ods": "M88006"
-      },
-      {
-        "name": "Voyager Family Health",
-        "count": 166,
-        "ods": "J82067"
-      },
-      {
-        "name": "Alma Road Surgery",
-        "count": 160,
-        "ods": "J82074"
-      },
-      {
-        "name": "Old Parsonage Surgery",
-        "count": 135,
-        "ods": "G82224"
-      },
-      {
-        "name": "Maltings Surgery",
-        "count": 126,
-        "ods": "E82031"
-      },
-      {
-        "name": "Lodge Highfield Redbourn",
-        "count": 106,
-        "ods": "E82014"
-      },
-      {
-        "name": "Ringmead Medical Group",
-        "count": 96,
-        "ods": "K81030"
-      },
-      {
-        "name": "Twyford Surgery",
-        "count": 85,
-        "ods": "J82116"
-      },
-      {
-        "name": "Oakleaf Medical Practice",
-        "count": 60,
-        "ods": "Y02794"
-      },
-      {
         "name": "Priory View Medical Centre",
-        "count": 37,
+        "count": 1,
         "ods": "B86024"
-      },
-      {
-        "name": "Everest House Surgery",
-        "count": 12,
-        "ods": "E82051"
-      },
-      {
-        "name": "Chineham Medical Practice",
-        "count": 9,
-        "ods": "J82218"
-      },
-      {
-        "name": "Meon Health Practice",
-        "count": 8,
-        "ods": "J82154"
-      },
-      {
-        "name": "Standish Medical Practice",
-        "count": 4,
-        "ods": "P92014"
-      },
-      {
-        "name": "Beech House Medical Practice",
-        "count": 3,
-        "ods": "P88012"
-      },
-      {
-        "name": "Clapham Family Practice",
-        "count": 2,
-        "ods": "G85011"
-      },
-      {
-        "name": "Chapelford Primary Care Centre",
-        "count": 1,
-        "ods": "Y04925"
-      },
-      {
-        "name": "Alvaston Medical Centre",
-        "count": 1,
-        "ods": "C81047"
-      },
-      {
-        "name": "Bramblys Grange Medical Practice",
-        "count": 1,
-        "ods": "J82058"
-      },
-      {
-        "name": "Summerfield Health Centre",
-        "count": 1,
-        "ods": "E82107"
       }
     ],
     "fy_by_practice": {
       "B86024": {
-        "fy_to_date": 69,
-        "this_month": 37
+        "fy_to_date": 70,
+        "this_month": 1
       },
       "C81047": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "C84660": {
         "fy_to_date": 206,
@@ -149,19 +39,19 @@
       },
       "E82014": {
         "fy_to_date": 230,
-        "this_month": 106
+        "this_month": 0
       },
       "E82031": {
         "fy_to_date": 1034,
-        "this_month": 126
+        "this_month": 0
       },
       "E82051": {
         "fy_to_date": 96,
-        "this_month": 12
+        "this_month": 0
       },
       "E82107": {
         "fy_to_date": 246,
-        "this_month": 1
+        "this_month": 0
       },
       "E84074": {
         "fy_to_date": 3,
@@ -177,11 +67,11 @@
       },
       "G82224": {
         "fy_to_date": 425,
-        "this_month": 135
+        "this_month": 0
       },
       "G84023": {
         "fy_to_date": 2172,
-        "this_month": 195
+        "this_month": 0
       },
       "G84624": {
         "fy_to_date": 1,
@@ -189,7 +79,7 @@
       },
       "G85011": {
         "fy_to_date": 2,
-        "this_month": 2
+        "this_month": 0
       },
       "H82066": {
         "fy_to_date": 1,
@@ -197,7 +87,7 @@
       },
       "J82058": {
         "fy_to_date": 2,
-        "this_month": 1
+        "this_month": 0
       },
       "J82064": {
         "fy_to_date": 344,
@@ -205,27 +95,27 @@
       },
       "J82067": {
         "fy_to_date": 1010,
-        "this_month": 166
+        "this_month": 0
       },
       "J82074": {
         "fy_to_date": 429,
-        "this_month": 160
+        "this_month": 0
       },
       "J82116": {
         "fy_to_date": 761,
-        "this_month": 85
+        "this_month": 0
       },
       "J82154": {
         "fy_to_date": 127,
-        "this_month": 8
+        "this_month": 0
       },
       "J82218": {
         "fy_to_date": 339,
-        "this_month": 9
+        "this_month": 0
       },
       "K81030": {
         "fy_to_date": 96,
-        "this_month": 96
+        "this_month": 0
       },
       "L85019": {
         "fy_to_date": 4,
@@ -233,11 +123,11 @@
       },
       "M85071": {
         "fy_to_date": 278,
-        "this_month": 255
+        "this_month": 0
       },
       "M88006": {
         "fy_to_date": 2431,
-        "this_month": 173
+        "this_month": 0
       },
       "M88015": {
         "fy_to_date": 4,
@@ -249,23 +139,23 @@
       },
       "P88012": {
         "fy_to_date": 3,
-        "this_month": 3
+        "this_month": 0
       },
       "P89008": {
         "fy_to_date": 293,
-        "this_month": 292
+        "this_month": 0
       },
       "P92014": {
         "fy_to_date": 22,
-        "this_month": 4
+        "this_month": 0
       },
       "Y02794": {
         "fy_to_date": 90,
-        "this_month": 60
+        "this_month": 0
       },
       "Y04925": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "Y06810": {
         "fy_to_date": 1,
@@ -334,7 +224,8 @@
       "B86024": {
         "2026-05": 14,
         "2026-06": 18,
-        "2026-07": 37
+        "2026-07": 37,
+        "2026-08": 1
       },
       "C84660": {
         "2026-05": 84,
@@ -482,7 +373,8 @@
       "B86024": {
         "2026-04-27": 14,
         "2026-06-01": 18,
-        "2026-06-29": 37
+        "2026-06-29": 37,
+        "2026-07-27": 1
       },
       "C84660": {
         "2026-04-27": 84,
@@ -582,110 +474,15 @@
     },
     "practices_this_month": [
       {
-        "name": "Ashton Medical Group",
-        "count": 225,
-        "ods": "P89008"
-      },
-      {
-        "name": "Wychall Lane Surgery",
-        "count": 208,
-        "ods": "M85071"
-      },
-      {
-        "name": "Voyager Family Health",
-        "count": 163,
-        "ods": "J82067"
-      },
-      {
-        "name": "Alma Road Surgery",
-        "count": 151,
-        "ods": "J82074"
-      },
-      {
-        "name": "Southborough Lane Surgery",
-        "count": 150,
-        "ods": "G84023"
-      },
-      {
-        "name": "Cape Hill Medical Centre",
-        "count": 143,
-        "ods": "M88006"
-      },
-      {
-        "name": "Lodge Highfield Redbourn",
-        "count": 106,
-        "ods": "E82014"
-      },
-      {
-        "name": "Maltings Surgery",
-        "count": 104,
-        "ods": "E82031"
-      },
-      {
-        "name": "Old Parsonage Surgery",
-        "count": 83,
-        "ods": "G82224"
-      },
-      {
-        "name": "Twyford Surgery",
-        "count": 79,
-        "ods": "J82116"
-      },
-      {
         "name": "Priory View Medical Centre",
-        "count": 37,
+        "count": 1,
         "ods": "B86024"
-      },
-      {
-        "name": "Oakleaf Medical Practice",
-        "count": 36,
-        "ods": "Y02794"
-      },
-      {
-        "name": "Everest House Surgery",
-        "count": 12,
-        "ods": "E82051"
-      },
-      {
-        "name": "Meon Health Practice",
-        "count": 8,
-        "ods": "J82154"
-      },
-      {
-        "name": "Chineham Medical Practice",
-        "count": 6,
-        "ods": "J82218"
-      },
-      {
-        "name": "Standish Medical Practice",
-        "count": 4,
-        "ods": "P92014"
-      },
-      {
-        "name": "Clapham Family Practice",
-        "count": 1,
-        "ods": "G85011"
-      },
-      {
-        "name": "Summerfield Health Centre",
-        "count": 1,
-        "ods": "E82107"
-      },
-      {
-        "name": "Bramblys Grange Medical Practice",
-        "count": 1,
-        "ods": "J82058"
-      },
-      {
-        "name": "Beech House Medical Practice",
-        "count": 1,
-        "ods": "P88012"
       }
     ],
     "fy_by_practice": {
       "B86024": {
-        "fy_to_date": 64,
-        "this_month": 37
+        "fy_to_date": 65,
+        "this_month": 1
       },
       "C84660": {
         "fy_to_date": 148,
@@ -693,19 +490,19 @@
       },
       "E82014": {
         "fy_to_date": 229,
-        "this_month": 106
+        "this_month": 0
       },
       "E82031": {
         "fy_to_date": 804,
-        "this_month": 104
+        "this_month": 0
       },
       "E82051": {
         "fy_to_date": 78,
-        "this_month": 12
+        "this_month": 0
       },
       "E82107": {
         "fy_to_date": 198,
-        "this_month": 1
+        "this_month": 0
       },
       "E86017": {
         "fy_to_date": 7,
@@ -717,11 +514,11 @@
       },
       "G82224": {
         "fy_to_date": 244,
-        "this_month": 83
+        "this_month": 0
       },
       "G84023": {
         "fy_to_date": 1693,
-        "this_month": 150
+        "this_month": 0
       },
       "G84624": {
         "fy_to_date": 1,
@@ -729,11 +526,11 @@
       },
       "G85011": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "J82058": {
         "fy_to_date": 2,
-        "this_month": 1
+        "this_month": 0
       },
       "J82064": {
         "fy_to_date": 46,
@@ -741,23 +538,23 @@
       },
       "J82067": {
         "fy_to_date": 849,
-        "this_month": 163
+        "this_month": 0
       },
       "J82074": {
         "fy_to_date": 381,
-        "this_month": 151
+        "this_month": 0
       },
       "J82116": {
         "fy_to_date": 734,
-        "this_month": 79
+        "this_month": 0
       },
       "J82154": {
         "fy_to_date": 127,
-        "this_month": 8
+        "this_month": 0
       },
       "J82218": {
         "fy_to_date": 225,
-        "this_month": 6
+        "this_month": 0
       },
       "L85019": {
         "fy_to_date": 3,
@@ -765,11 +562,11 @@
       },
       "M85071": {
         "fy_to_date": 229,
-        "this_month": 208
+        "this_month": 0
       },
       "M88006": {
         "fy_to_date": 1708,
-        "this_month": 143
+        "this_month": 0
       },
       "M88015": {
         "fy_to_date": 2,
@@ -781,19 +578,19 @@
       },
       "P88012": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "P89008": {
         "fy_to_date": 226,
-        "this_month": 225
+        "this_month": 0
       },
       "P92014": {
         "fy_to_date": 21,
-        "this_month": 4
+        "this_month": 0
       },
       "Y02794": {
         "fy_to_date": 65,
-        "this_month": 36
+        "this_month": 0
       },
       "Y06810": {
         "fy_to_date": 1,
@@ -983,6 +780,10 @@
         "2026-07": {
           "Lisa Credland": 37,
           "_total": 37
+        },
+        "2026-08": {
+          "Lisa Credland": 1,
+          "_total": 1
         }
       },
       "E82107": {
@@ -1245,7 +1046,8 @@
       "B86024": {
         "2026-04-27": 10,
         "2026-06-01": 17,
-        "2026-06-29": 37
+        "2026-06-29": 37,
+        "2026-07-27": 1
       },
       "E82107": {
         "2026-04-27": 63,
@@ -1330,29 +1132,7 @@
   },
   "weekly_available": false,
   "active_ods_this_month": [
-    "B86024",
-    "C81047",
-    "E82014",
-    "E82031",
-    "E82051",
-    "E82107",
-    "G82224",
-    "G84023",
-    "G85011",
-    "J82058",
-    "J82067",
-    "J82074",
-    "J82116",
-    "J82154",
-    "J82218",
-    "K81030",
-    "M85071",
-    "M88006",
-    "P88012",
-    "P89008",
-    "P92014",
-    "Y02794",
-    "Y04925"
+    "B86024"
   ],
   "active_ods_recent": [
     "B86024",
