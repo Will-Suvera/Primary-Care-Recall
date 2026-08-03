@@ -1,24 +1,25 @@
 {
   "date": "2026-08-03",
-  "timestamp": "2026-08-03T13:01:35.443419+00:00",
+  "timestamp": "2026-08-03T13:06:43.529057+00:00",
   "practices": {
-    "live_planner": 20,
+    "live_planner": 22,
     "live_full_planner": 35,
-    "live": 55,
-    "waitlist": 400,
-    "pipeline": 455,
+    "live": 57,
+    "waitlist": 399,
+    "pipeline": 456,
     "total": 6378,
-    "coverage_pct": 7.13
+    "coverage_pct": 7.15
   },
   "patients": {
-    "live_planner": 181736,
+    "live_planner": 202922,
     "live_full_planner": 512930,
-    "live": 694666,
-    "waitlist": 4536154,
-    "pipeline": 5230820
+    "live": 715852,
+    "waitlist": 4520711,
+    "pipeline": 5236563
   },
   "live_ods": [
     "B86024",
+    "B86029",
     "C81634",
     "C84660",
     "E82013",
@@ -46,6 +47,7 @@
     "J82067",
     "J82074",
     "J82116",
+    "J82139",
     "J82154",
     "J82218",
     "K82030",
@@ -399,7 +401,6 @@
     "J82121",
     "J82129",
     "J82138",
-    "J82139",
     "J82141",
     "J82146",
     "J82161",
