@@ -38,7 +38,7 @@ function escapeHtml(str) {
 
 function buildPopupContent(p, status, isActive) {
   const labels = {
-    paid: 'Paid',
+    paid: 'Gold',
     fullPlanner: 'Live - Full Planner',
     inProgress: 'In Progress',
     waitlist: 'On Signed-Up List',

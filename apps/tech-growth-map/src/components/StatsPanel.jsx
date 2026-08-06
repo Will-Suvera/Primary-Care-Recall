@@ -202,7 +202,7 @@ export default function StatsPanel({ practices, liveOds, fullPlannerOds, onboard
       {/* Legend */}
       <div className="legend">
         <div className="section-title">Map Legend</div>
-        <div className="legend-item"><div className="legend-dot paid"></div><div><span>Paid</span><div className="legend-desc">Paying customer (signed contract)</div></div></div>
+        <div className="legend-item"><div className="legend-dot paid"></div><div><span>Gold</span><div className="legend-desc">Paying customer (signed contract)</div></div></div>
         <div className="legend-item"><div className="legend-dot full-planner"></div><div><span>Live - Full Planner</span><div className="legend-desc">Booking links + Pathology enabled</div></div></div>
         <div className="legend-item"><div className="legend-dot in-progress"></div><div><span>In Progress</span><div className="legend-desc">Actively being onboarded</div></div></div>
         <div className="legend-item"><div className="legend-dot waitlist"></div><span>On Signed-Up List</span></div>

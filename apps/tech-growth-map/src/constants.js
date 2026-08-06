@@ -14,7 +14,9 @@ export const MAP_ZOOM = 6
 export const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
 export const MARKER_STYLES = {
-  paid: { color: '#4a2c93', fillColor: '#7c3aed', radius: 7.5, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
+  // Gold tier (paying customers) — rich gold with a dark ring so it stands
+  // apart from the smaller amber "signed up" dots.
+  paid: { color: '#92600a', fillColor: '#eab308', radius: 7.5, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
   fullPlanner: { color: '#15803d', fillColor: '#22c55e', radius: 7, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
   inProgress: { color: '#1d4ed8', fillColor: '#60a5fa', radius: 5, fillOpacity: 0.9, weight: 1.5, opacity: 0.9 },
   waitlist: { color: '#f59e0b', fillColor: '#f59e0b', radius: 4, fillOpacity: 0.8, weight: 1.5, opacity: 0.8 },
