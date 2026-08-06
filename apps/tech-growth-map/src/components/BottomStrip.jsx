@@ -54,17 +54,17 @@ export default function BottomStrip({ recalls }) {
     return entries.sort((a, b) => b.count - a.count)
   }, [recalls])
 
-  // Rotate biggest mover every 5s
+  // Rotate biggest mover every 10s (slower = fewer re-renders + fade-ins on the TV)
   useEffect(() => {
     if (topMovers.length === 0) return
-    const id = setInterval(() => setMoverIdx(i => (i + 1) % topMovers.length), 5000)
+    const id = setInterval(() => setMoverIdx(i => (i + 1) % topMovers.length), 10000)
     return () => clearInterval(id)
   }, [topMovers.length])
 
-  // Rotate activity log every 4s
+  // Rotate activity log every 8s
   useEffect(() => {
     if (activityEntries.length === 0) return
-    const id = setInterval(() => setLogIdx(i => (i + 1) % activityEntries.length), 4000)
+    const id = setInterval(() => setLogIdx(i => (i + 1) % activityEntries.length), 8000)
     return () => clearInterval(id)
   }, [activityEntries.length])
 
