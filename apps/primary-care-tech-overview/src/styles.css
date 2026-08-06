@@ -449,7 +449,7 @@ tr.row-shaded td { border-bottom-color: rgba(255, 255, 255, .55); }
 .tag.emis { background: var(--su-neutral-bg); color: var(--su-purple-900); }
 .badge.vc { background: var(--su-neutral-bg); color: var(--su-purple-900); }
 .badge.free { background: var(--su-tint-2); color: var(--su-text-2); }
-.badge.mbg { background: var(--su-good-bg); color: var(--su-good); }
+.badge.mbg { background: rgba(217, 119, 6, 0.12); color: #b45309; }
 .badge.gold { background: var(--su-warn-bg); color: var(--su-warn); }
 .badge.quiet { background: var(--su-warn-bg); color: var(--su-warn); }
 .tag.tech-roll { background: var(--su-tint-2); color: var(--su-purple-900); }

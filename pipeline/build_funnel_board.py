@@ -651,7 +651,7 @@ for d in planner["deals"]:
         "source": p.get("source"), "icb": p.get("icb") or geo.get("icb"), "patients": patients,
         # A PAID deal always shows as the paying tier, whatever the tiers file says
         # (the sheet/tiers file defaults everyone to Freemium and lags reality).
-        "tier": ("Paid (MBG)" if is_paid else p.get("tier")),
+        "tier": ("Gold" if is_paid else p.get("tier")),
         "pcn_name": p.get("pcn_name") or geo.get("pcn_name"), "amount": to_amount(d.get("amount")),
         "stage_durations": durations, "stage_timeline": stage_timeline,
         "onboarding": onb_steps,
@@ -842,7 +842,7 @@ for ods, fyv in fy_recalls_by_ods.items():
     recalling_practices.append({
         "ods": ods,
         "name": info.get("name") or (ods2p.get(ods, {}) or {}).get("name") or ods,
-        "patients": pat, "tier": ("Paid (MBG)" if ods in paid_ods else (_tier(ods) or (ods2p.get(ods, {}) or {}).get("tier"))),
+        "patients": pat, "tier": ("Gold" if ods in paid_ods else (_tier(ods) or (ods2p.get(ods, {}) or {}).get("tier"))),
         "icb": info.get("icb"), "pcn_name": info.get("pcn_name"),
         "fy_recalls": fy_total, "fy_recalls_pct": pct_of_list(fy_total, pat), "recalls_avg_mo": recalls_avg,
         "recalls_this_month": recalls_tm_by_ods.get(ods, 0),
@@ -878,7 +878,7 @@ for ods in sorted(live_ods_all - recalling_ods):
     live_not_recalling.append({
         "ods": ods,
         "name": info.get("name") or (ods2p.get(ods, {}) or {}).get("name") or ods,
-        "patients": pat, "tier": ("Paid (MBG)" if ods in paid_ods else (_tier(ods) or (ods2p.get(ods, {}) or {}).get("tier"))),
+        "patients": pat, "tier": ("Gold" if ods in paid_ods else (_tier(ods) or (ods2p.get(ods, {}) or {}).get("tier"))),
         "icb": info.get("icb"), "pcn_name": info.get("pcn_name"),
         "fy_recalls": 0, "fy_recalls_pct": None, "recalls_avg_mo": 0, "recalls_this_month": 0,
         "fy_bloods": bl_total, "fy_bloods_pct": pct_of_list(bl_total, pat),

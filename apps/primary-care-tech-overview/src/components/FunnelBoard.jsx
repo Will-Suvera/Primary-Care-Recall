@@ -521,7 +521,7 @@ function Badges({ d }) {
       {d.ehr === "SystmOne" && <em className="tag">TPP</em>}
       {d.ehr === "EMIS" && <em className="tag emis">EMIS</em>}
       {d.fy_recalls > 1000 && <em className="badge gold" title=">1,000 recalls this FY">1k+ club</em>}
-      {(d.tier === "Money-back" || d.tier === "Paid (MBG)") && <em className="badge mbg" title="Paying customer (money-back guarantee)">Paid (MBG)</em>}
+      {(d.tier === "Money-back" || d.tier === "Gold") && <em className="badge mbg" title="Paying customer (money-back guarantee)">Gold</em>}
       {d.tier === "Freemium" && <em className="badge free">Freemium</em>}
       {d.tier === "VC" && <em className="badge vc">VC</em>}
     </>
@@ -717,7 +717,7 @@ function PracticeBadges({ p }) {
     <>
       {p.tier === "VC" && <em className="badge vc">VC</em>}
       {p.tier === "Freemium" && <em className="badge free">Freemium</em>}
-      {(p.tier === "Money-back" || p.tier === "Paid (MBG)") && <em className="badge mbg">Paid (MBG)</em>}
+      {(p.tier === "Money-back" || p.tier === "Gold") && <em className="badge mbg">Gold</em>}
       {p.fy_recalls > 1000 && <em className="badge gold" title=">1,000 recalls this FY">1k+ club</em>}
       {p.no_bloods && <em className="badge quiet" title="recalling but zero bloods automated — pathology not switched on">no bloods</em>}
       {p.gone_quiet && <em className="badge quiet" title="recalled last month, nothing yet this month">quiet this mo</em>}
