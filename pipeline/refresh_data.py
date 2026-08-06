@@ -70,6 +70,10 @@ VC_NAME_OVERRIDES = {
     # Two "Ashville Surgery" (E85719, P84038) — the recalling one is P84038.
     "ashville surgery": "P84038",
     "ashville": "P84038",
+    # Omni logs "Wistaria Milford Surgeries"; ODS name is "WISTARIA & MILFORD
+    # SURGERIES" (J82139) — the "&" stops the substring match.
+    "wistaria milford surgeries": "J82139",
+    "wistaria and milford surgeries": "J82139",
     # The Lodge (Lodge, Highfield & Redbourn, St Albans) = E82014 — confirmed
     # against HubSpot ods_unique. A bare "Lodge" sheet row used to substring-
     # match A99876 "NEWTON LODGE - BCSS INPATIENT UNIT" (a screening pseudo-
@@ -100,11 +104,22 @@ def resolve_vc_name(practice_name, name_to_ods):
     return None
 
 # Omni exports → Google Sheets (scheduled daily from Omni)
+# The original monthly recalls sheet stopped receiving Omni deliveries on
+# 2026-08-01. It stays as the FROZEN ARCHIVE for months before RECALLS_CUTOVER
+# (it holds Jul 2025 – May 2026, incl. FY Apr+May); the live feed is the new
+# per-day sheet below, spliced in from RECALLS_CUTOVER onwards.
 GSHEET_RECALLS_URL = (
     "https://docs.google.com/spreadsheets/d/e/"
     "2PACX-1vTDYmEyNiaLeSgJTfHy1OFoAH5X48yy3N7baiyCYd5nnFGToGi9GqTpKNqs-Oj2EC8oG4"
     "iTVSZENZMV/pub?output=csv&gid=0&single=true"
 )
+# "Planner recalls per day" — daily-grain Omni delivery (same "Recall At" lens,
+# same 3 columns: date, practice name, count). Data starts 2026-06-01.
+GSHEET_RECALLS_DAILY_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1IKGhc_BAsUQNq5Omfx9OHk9OEk-INJDOVloNLUI6F24/export?format=csv&gid=1271494859"
+)
+RECALLS_CUTOVER = "2026-06"  # archive strictly before; daily feed from here on
 GSHEET_BLOODS_URL = (
     # Authoritative Omni → Sheet bloods export — feeds both the tech-growth
     # map and the Planner Growth Dashboard. Replaced 2026-05-25 (prior sheet
@@ -944,19 +959,32 @@ def _fetch_breakdown(url, count_col, practice_col, label, months=None, clinician
     from collections import defaultdict
     from datetime import datetime as _dt
     from datetime import timedelta as _td
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "SuveraRefreshBot/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8-sig")
-    except Exception as e:
-        print(f"  WARN: Could not fetch {label} sheet: {e}")
-        return {}, 0, {}, {}, {}, False
+    # `url` may be a single URL, or a list of (url, lo_month, hi_month) sources
+    # spliced together — rows are kept when lo <= month < hi (None = open end).
+    # Any source failing aborts the whole feed so a partial fetch can't
+    # masquerade as "recalls dropped to zero".
+    sources = url if isinstance(url, list) else [(url, None, None)]
+    src_rows = []
+    for src_url, lo, hi in sources:
+        try:
+            req = urllib.request.Request(src_url, headers={"User-Agent": "SuveraRefreshBot/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8-sig")
+        except Exception as e:
+            print(f"  WARN: Could not fetch {label} sheet: {e}")
+            return {}, 0, {}, {}, {}, False
+        reader = csv.reader(io.StringIO(raw))
+        next(reader, None)
+        for row in reader:
+            m = row[0].strip()[:7] if row else ""
+            if lo is not None and m < lo:
+                continue
+            if hi is not None and m >= hi:
+                continue
+            src_rows.append(row)
 
     if months is None:
         months = {_dt.now().strftime("%Y-%m")}
-
-    reader = csv.reader(io.StringIO(raw))
-    next(reader, None)
     monthly = {}
     total = 0
     by_month_practice = defaultdict(lambda: defaultdict(int))  # month -> {pname: count}
@@ -970,7 +998,7 @@ def _fetch_breakdown(url, count_col, practice_col, label, months=None, clinician
     # current Omni sheet is monthly, so this stays False until a daily feed is wired).
     by_pname_week = defaultdict(lambda: defaultdict(int))  # pname -> weekStart(YYYY-MM-DD) -> count
     has_daily = False
-    for row in reader:
+    for row in src_rows:
         if len(row) <= count_col:
             continue
         month = row[0].strip()[:7]
@@ -1183,10 +1211,13 @@ def refresh_recalls():
     # Always include prev_month even if it predates FY start (rolling 2-month set).
     months = fy_months | {this_month, prev_month}
 
-    # Recalls feed: no clinician column.
+    # Recalls feed: no clinician column. Spliced from two sheets — the frozen
+    # monthly archive (pre-Jun 2026) + the live per-day Omni delivery.
     # Bloods feed: clinician = column 3 ("Full Name").
     r_monthly, r_total, r_practices_by_month, r_by_ods_month_clinician, r_by_ods_week, r_daily = _fetch_breakdown(
-        GSHEET_RECALLS_URL, 2, 1, "Recalls", months=months)
+        [(GSHEET_RECALLS_URL, None, RECALLS_CUTOVER),
+         (GSHEET_RECALLS_DAILY_URL, RECALLS_CUTOVER, None)],
+        2, 1, "Recalls", months=months)
     b_monthly, b_total, b_practices_by_month, b_by_ods_month_clinician, b_by_ods_week, b_daily = _fetch_breakdown(
         GSHEET_BLOODS_URL, 4, 1, "Bloods", months=months, clinician_col=3)
 
@@ -1254,6 +1285,12 @@ def refresh_recalls():
     }
 
     output_path = DATA_DIR / "recalls.json"
+    # Feed-failure guard: _fetch_breakdown returns an empty dict when any
+    # source fetch fails. Writing that would zero out the map's recall history,
+    # so keep the existing file instead — stale beats blank.
+    if not r_monthly and output_path.exists():
+        print("  WARN: recalls feed empty — keeping existing recalls.json untouched.")
+        return
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
 
