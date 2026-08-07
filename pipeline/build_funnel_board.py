@@ -21,7 +21,7 @@ NOW = datetime.now(timezone.utc)
 # Deals for signed, paying contracts are named "PAID - <practice> - Planner".
 # Tolerant of spacing and of a hyphen/en-dash/em-dash/colon separator so a
 # hand-typed rename in HubSpot still registers.
-PAID_PREFIX_RE = re.compile(r"^\s*PAID\s*[-–—:]\s*", re.IGNORECASE)
+PAID_PREFIX_RE = re.compile(r"^\s*PAID\b[\s\-–—:]*", re.IGNORECASE)
 
 def get_token():
     t = os.environ.get("HUBSPOT_API_TOKEN", "").strip()

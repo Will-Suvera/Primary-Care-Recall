@@ -1190,7 +1190,7 @@ def refresh_paid_customers():
     """
     print("\n=== Refreshing Paid Customers (HubSpot PAID deals) ===")
     out_path = DATA_DIR / "paid_customers.json"
-    paid_re = re.compile(r"^\s*PAID\s*[-–—:]", re.IGNORECASE)
+    paid_re = re.compile(r"^\s*PAID\b[\s\-–—:]*", re.IGNORECASE)
 
     try:
         # CONTAINS_TOKEN "PAID" over-matches (any deal with the word paid);
