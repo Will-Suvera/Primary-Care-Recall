@@ -21,6 +21,7 @@ Usage:
 
 import json
 import os
+import re
 import time
 import sys
 import urllib.request
@@ -1176,6 +1177,75 @@ def refresh_pcn_icb():
         print("  PCN/ICB already current with ODS ePCN")
 
 
+def refresh_paid_customers():
+    """Sync paid_customers.json (map's Gold tier) from HubSpot.
+
+    A paying customer is a Planner deal renamed to "PAID - <practice> - …";
+    the ODS comes from the deal's associated company (practice_code /
+    ods_unique). Replaces the old hand-maintained list — rename a deal in
+    HubSpot and the next 5-min refresh turns the practice gold on the map.
+
+    Safety: any HubSpot error, or an empty result when the previous file was
+    non-empty, leaves the existing file untouched.
+    """
+    print("\n=== Refreshing Paid Customers (HubSpot PAID deals) ===")
+    out_path = DATA_DIR / "paid_customers.json"
+    paid_re = re.compile(r"^\s*PAID\s*[-–—:]", re.IGNORECASE)
+
+    try:
+        # CONTAINS_TOKEN "PAID" over-matches (any deal with the word paid);
+        # the prefix regex below is the real filter.
+        resp = hubspot_request("POST", "/crm/v3/objects/deals/search", {
+            "filterGroups": [{"filters": [
+                {"propertyName": "dealname", "operator": "CONTAINS_TOKEN", "value": "PAID"},
+            ]}],
+            "properties": ["dealname"],
+            "limit": 100,
+        })
+        deals = [d for d in resp.get("results", [])
+                 if paid_re.match(d.get("properties", {}).get("dealname") or "")]
+        print(f"  PAID-prefixed deals: {len(deals)}")
+
+        paid_ods = set()
+        for d in deals:
+            assoc = hubspot_request("GET", f"/crm/v4/objects/deals/{d['id']}/associations/companies")
+            for a in assoc.get("results", []):
+                comp = hubspot_request(
+                    "GET",
+                    f"/crm/v3/objects/companies/{a['toObjectId']}?properties=practice_code,ods_unique,name")
+                p = comp.get("properties", {})
+                ods = (p.get("practice_code") or p.get("ods_unique") or "").strip().upper()
+                if is_valid_ods(ods):
+                    paid_ods.add(ods)
+                    break
+            else:
+                print(f"  WARN: no ODS resolved for deal "
+                      f"'{d.get('properties', {}).get('dealname')}' — not in paid set")
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"  WARN: HubSpot paid-deal fetch failed ({e}); keeping existing {out_path.name}")
+        return
+
+    previous = set()
+    if out_path.exists():
+        try:
+            with open(out_path) as f:
+                previous = set(json.load(f))
+        except Exception:
+            pass
+    if not paid_ods and previous:
+        print("  WARN: PAID search returned nothing but previous file was non-empty — keeping it.")
+        return
+
+    with open(out_path, "w") as f:
+        json.dump(sorted(paid_ods), f, indent=1)
+    added, removed = sorted(paid_ods - previous), sorted(previous - paid_ods)
+    print(f"  paid customers: {len(paid_ods)}"
+          + (f" · added {added}" if added else "")
+          + (f" · removed {removed}" if removed else ""))
+
+
 def refresh_recalls():
     """Fetch recall + bloods data from Omni exports and save as JSON.
 
@@ -1338,6 +1408,8 @@ def main():
 
     if mode in ("--all", "--waitlist"):
         refresh_waitlist()
+        # Gold tier on the map: deals renamed "PAID - …" in HubSpot.
+        refresh_paid_customers()
 
     refresh_recalls()
 
