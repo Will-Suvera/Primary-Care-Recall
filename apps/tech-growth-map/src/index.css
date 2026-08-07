@@ -299,7 +299,7 @@ span.stale { color: #fca5a5; font-weight: 600; }
 .legend-desc { font-size: 10px; color: #94a3b8; font-weight: 300; margin-top: 1px; }
 .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .legend-dot.not-signed { background: #6366f1; border: 1px solid #818cf8; }
-.legend-dot.waitlist { background: #f59e0b; }
+.legend-dot.waitlist { background: #8b5cf6; }
 .legend-dot.live { background: #22c55e; }
 .legend-dot.in-progress { background: #60a5fa; border: 1px solid #1d4ed8; }
 .legend-dot.full-planner { background: #22c55e; border: 2.5px solid #15803d; width: 12px; height: 12px; }
@@ -384,7 +384,7 @@ span.stale { color: #fca5a5; font-weight: 600; }
 }
 .ticker-emoji { font-size: 12px; line-height: 1; }
 .ticker-dot.live { background: #22c55e; }
-.ticker-dot.signup { background: #f59e0b; }
+.ticker-dot.signup { background: #8b5cf6; }
 .ticker-name {
     font-size: 12px; color: #e2e8f0; font-weight: 400;
     letter-spacing: 0.2px;
@@ -759,7 +759,7 @@ path.leaflet-interactive,
 .popup-status.paid { color: #6d44c8; }
 .popup-status.live { color: #16a34a; }
 .popup-status.in-progress { color: #1d4ed8; }
-.popup-status.waitlist { color: #d97706; }
+.popup-status.waitlist { color: #6d44c8; }
 .popup-status.not-signed { color: #94a3b8; }
 .popup-active {
     display: flex; align-items: center; gap: 6px;
