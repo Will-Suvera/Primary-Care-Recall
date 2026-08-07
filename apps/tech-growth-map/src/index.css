@@ -449,6 +449,12 @@ path.leaflet-interactive,
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
 }
+/* Paid (Gold) practices that are actively recalling pulse in gold, not green —
+   the tier colour outranks the activity colour. */
+.marker-flashing.marker-gold {
+    stroke: #92600a !important;
+    fill: #eab308 !important;
+}
 
 /* ---- Practice search (top-right, left of the timeline slider) ---- */
 .map-search {

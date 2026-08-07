@@ -158,7 +158,8 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
       const activeSet = recalls?.active_ods_this_month ? new Set(recalls.active_ods_this_month) : new Set()
       const isActive = activeSet.has(ods)
       const markerOpts = { ...MARKER_STYLES[status] }
-      if (isActive) markerOpts.className = 'marker-flashing'
+      // Paid practices keep their gold identity while pulsing; everyone else flashes green.
+      if (isActive) markerOpts.className = status === 'paid' ? 'marker-flashing marker-gold' : 'marker-flashing'
       const marker = L.circleMarker([p.lat, p.lng], markerOpts)
       marker.bindPopup(() => {
         const cur = currentOdsRef.current
