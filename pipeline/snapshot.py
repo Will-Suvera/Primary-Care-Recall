@@ -33,6 +33,11 @@ def take_snapshot():
     live_all_ods = load_set(DATA_DIR / "live_customers.json")
     full_planner_ods = load_set(DATA_DIR / "live_customers_full_planner.json")
     waitlist_ods = load_set(DATA_DIR / "waitlist_ods.json")
+    # Gold tier + onboarding — snapshotted so the map's timeline scrub shows
+    # the tier a practice actually had on that date (files may predate the
+    # feature; load_set returns empty for a missing file).
+    paid_ods = load_set(DATA_DIR / "paid_customers.json")
+    onboarding_ods = load_set(DATA_DIR / "onboarding_ods.json")
 
     # Full planner is a subset of live → planner-only is the difference.
     planner_only_ods = live_all_ods - full_planner_ods
@@ -86,6 +91,8 @@ def take_snapshot():
         "live_ods": sorted(live_all_ods),
         "live_full_planner_ods": sorted(full_planner_ods),
         "waitlist_ods": sorted(waitlist_ods),
+        "paid_ods": sorted(paid_ods),
+        "onboarding_ods": sorted(onboarding_ods),
     }
 
     SNAPSHOT_DIR.mkdir(exist_ok=True)
@@ -95,7 +102,7 @@ def take_snapshot():
     # Update lightweight timeline (no ODS lists, just counts).
     timeline_file = SNAPSHOT_DIR / "timeline.json"
     timeline = json.loads(timeline_file.read_text()) if timeline_file.exists() else []
-    entry = {k: v for k, v in snapshot.items() if k not in ("live_ods", "live_full_planner_ods", "waitlist_ods")}
+    entry = {k: v for k, v in snapshot.items() if k not in ("live_ods", "live_full_planner_ods", "waitlist_ods", "paid_ods", "onboarding_ods")}
     timeline = [t for t in timeline if t["date"] != date_str] + [entry]
     timeline.sort(key=lambda t: t["date"])
     with open(timeline_file, "w") as f:

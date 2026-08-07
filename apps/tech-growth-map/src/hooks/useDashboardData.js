@@ -74,5 +74,5 @@ export function useDashboardData() {
     load()
   }, [])
 
-  return { practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, waitlistContacts, recalls, loading, error, setLiveOds, setFullPlannerOds, setOnboardingOds, setWaitlistOds }
+  return { practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, waitlistContacts, recalls, loading, error, setLiveOds, setFullPlannerOds, setOnboardingOds, setPaidOds, setWaitlistOds }
 }

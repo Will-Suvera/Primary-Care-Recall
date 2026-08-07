@@ -56,7 +56,7 @@ function buildPopupContent(p, status, isActive) {
     ${isActive ? `<div class="popup-active"><span class="popup-active-dot"></span>Actively Recalling</div>` : ''}`
 }
 
-export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, setLiveOds, setFullPlannerOds, setWaitlistOds, timeline, recalls }) {
+export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, setLiveOds, setFullPlannerOds, setOnboardingOds, setPaidOds, setWaitlistOds, timeline, recalls }) {
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const layersRef = useRef({})
@@ -213,17 +213,24 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
       if (cancelled) return
       if (!snap?.live_ods || !snap?.waitlist_ods) return
 
-      const newLive = new Set(snap.live_ods.map(c => c.toUpperCase()))
-      const newWaitlist = new Set(snap.waitlist_ods.map(c => c.toUpperCase()))
-      setLiveOds(newLive)
-      setWaitlistOds(newWaitlist)
+      const toSet = (arr) => new Set((arr || []).map(c => c.toUpperCase()))
+      setLiveOds(toSet(snap.live_ods))
+      setWaitlistOds(toSet(snap.waitlist_ods))
+      // Apply every tier the snapshot carries, so scrubbing shows the tier a
+      // practice actually had on that date. Older snapshots predate paid_ods /
+      // onboarding_ods: paid falls back to EMPTY (gold didn't exist then, and
+      // today's set would paint history gold); onboarding keeps the current
+      // set (its practices were still live/waitlist members back then).
+      setFullPlannerOds(toSet(snap.live_full_planner_ods))
+      setPaidOds(toSet(snap.paid_ods))
+      if (snap.onboarding_ods) setOnboardingOds(toSet(snap.onboarding_ods))
     }, 80)
 
     return () => {
       cancelled = true
       clearTimeout(debounceRef.current)
     }
-  }, [sliderIdx, timelineData, practices, setLiveOds, setWaitlistOds])
+  }, [sliderIdx, timelineData, practices, setLiveOds, setWaitlistOds, setFullPlannerOds, setOnboardingOds, setPaidOds])
 
   const isLatest = timelineData.length === 0 || sliderIdx === timelineData.length - 1
   const currentEntry = timelineData[sliderIdx]

@@ -14,7 +14,7 @@ export default function App() {
     const id = setTimeout(() => location.reload(), AUTO_REFRESH_MS)
     return () => clearTimeout(id)
   }, [])
-  const { practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, waitlistContacts, recalls, loading, error, setLiveOds, setFullPlannerOds, setWaitlistOds } = useDashboardData()
+  const { practices, liveOds, fullPlannerOds, onboardingOds, paidOds, waitlistOds, waitlistContacts, recalls, loading, error, setLiveOds, setFullPlannerOds, setOnboardingOds, setPaidOds, setWaitlistOds } = useDashboardData()
   const timeline = useTimeline()
 
   // When timeline slider is not at the latest entry, use the timeline's aggregate
@@ -54,6 +54,8 @@ export default function App() {
               waitlistOds={waitlistOds}
               setLiveOds={setLiveOds}
               setFullPlannerOds={setFullPlannerOds}
+              setOnboardingOds={setOnboardingOds}
+              setPaidOds={setPaidOds}
               setWaitlistOds={setWaitlistOds}
               timeline={timeline}
               recalls={recalls}
