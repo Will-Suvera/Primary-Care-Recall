@@ -719,19 +719,50 @@ def refresh_live_from_google_sheet():
 
     # 1. SaaS tab: Column G (idx 6) = ODS Code, Column I (idx 8) = Status
     #    (Sheet was restructured 2026-05-15 — Status moved from G→I, ODS H→G.)
+    #    Failsafe: the ODS cell is hand-typed and sheet edits have wiped it
+    #    before (Fakenham, 2026-08-11) — rows with a Live/In-Progress status
+    #    but no valid ODS fall back to a unique practice-name match against
+    #    the NHS directory (plus VC_NAME_OVERRIDES) instead of being dropped.
     try:
         raw = fetch_csv(GSHEET_SAAS_URL)
         reader = csv.reader(io.StringIO(raw))
         next(reader, None)  # skip header
+
+        def _norm(s):
+            return "".join(c for c in (s or "").lower() if c.isalnum())
+        norm_to_ods = {}
+        try:
+            with open(DATA_DIR / "practices_geocoded.json") as f:
+                for p in json.load(f):
+                    if "bcss" in (p.get("name") or "").lower():
+                        continue
+                    norm_to_ods.setdefault(_norm(p["name"]), []).append(p["ods"].upper())
+        except Exception:
+            pass
+
+        name_matched = []
         for row in reader:
             ods = row[6].strip().upper() if len(row) > 6 else ""
             status = row[8].strip().lower() if len(row) > 8 else ""
             if not is_valid_ods(ods):
-                continue
+                if status not in ("live", "in progress"):
+                    continue
+                name = row[0].strip() if row else ""
+                cands = ([VC_NAME_OVERRIDES[name.lower().strip()]]
+                         if name.lower().strip() in VC_NAME_OVERRIDES
+                         else norm_to_ods.get(_norm(name), []))
+                if name and len(cands) == 1:
+                    ods = cands[0]
+                    name_matched.append(f"{name} -> {ods}")
+                else:
+                    print(f"  WARN: SaaS row '{name}' is {status} with no ODS and no unique name match — skipped")
+                    continue
             if status == "live":
                 sheet_live.add(ods)
             elif status == "in progress":
                 sheet_onboarding.add(ods)
+        if name_matched:
+            print(f"  SaaS tab fallback: {len(name_matched)} row(s) without ODS matched by name: " + "; ".join(name_matched))
         print(f"  SaaS tab: {len(sheet_live)} live, {len(sheet_onboarding)} in-progress (onboarding)")
     except Exception as e:
         print(f"  WARN: Could not fetch SaaS tab: {e}")

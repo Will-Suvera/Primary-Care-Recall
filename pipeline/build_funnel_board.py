@@ -82,11 +82,17 @@ GSHEET_SAAS = ("https://docs.google.com/spreadsheets/d/e/2PACX-1vRa6zIwdwnNSfjjU
                "XWsyVe0gR6AZP55IzeVW9qisAUb0Hvo4Nr7qdGhWLnK1l4SDnl/pub?output=csv&gid=0")
 
 def load_onboarding_steps():
-    """Returns (steps, notes):
-       steps: ods -> [{step, state}] where state ∈ done|pending|todo
-       notes: ods -> free-text from the sheet's "Notes" column (read-only)."""
+    """Returns (steps, notes, pending, ehr):
+       steps:   ods -> [{step, state}] where state ∈ done|pending|todo
+       notes:   ods -> free-text from the sheet's "Notes" column (read-only)
+       pending: rows with a practice name but NO usable ODS — the ODS cell is
+                hand-typed and has been wiped by sheet edits before (Fakenham,
+                2026-08-11), so these are resolved later by name against
+                HubSpot deals / the NHS directory rather than dropped.
+       ehr:     ods -> the sheet's EHR column (fallback when the HubSpot deal
+                has no ehr_type)."""
     import csv, io
-    out, notes_out = {}, {}
+    out, notes_out, pending, ehr_out = {}, {}, [], {}
     try:
         req = urllib.request.Request(GSHEET_SAAS, headers={"User-Agent": "SuveraReadOnly/1.0"})
         with urllib.request.urlopen(req, timeout=30) as r:
@@ -95,9 +101,13 @@ def load_onboarding_steps():
         idx = {h.strip(): i for i, h in enumerate(hdr)}
         ods_i = idx.get("ODS Code", 6)
         notes_i = idx.get("Notes")
+        name_i = idx.get("GP Practice", 0)
+        status_i = idx.get("Status", 8)
+        ehr_i = idx.get("EHR")
         for row in rows[1:]:
             ods = (row[ods_i].strip().upper() if len(row) > ods_i else "")
-            if not ods:
+            name = (row[name_i].strip() if len(row) > name_i else "")
+            if not ods and not name:
                 continue
             steps = []
             for col, key, done_vals in ONBOARD_STEPS:
@@ -110,16 +120,25 @@ def load_onboarding_steps():
                 else:
                     state = "pending" if v else "todo"
                 steps.append({"step": col, "key": key, "state": state, "value": v})
-            out[ods] = steps
             note = (row[notes_i].strip() if notes_i is not None and notes_i < len(row) else "")
-            if note:
-                notes_out[ods] = note
-        print(f"  onboarding checklist: {len(out)} practices from sheet ({len(notes_out)} with notes)")
+            ehr = (row[ehr_i].strip() if ehr_i is not None and ehr_i < len(row) else "")
+            if ods:
+                out[ods] = steps
+                if note:
+                    notes_out[ods] = note
+                if ehr:
+                    ehr_out[ods] = ehr
+            else:
+                status = (row[status_i].strip() if len(row) > status_i else "")
+                pending.append({"name": name, "status": status, "steps": steps,
+                                "note": note, "ehr": ehr})
+        print(f"  onboarding checklist: {len(out)} practices from sheet ({len(notes_out)} with notes, "
+              f"{len(pending)} rows without ODS held for name-matching)")
     except Exception as e:
         print(f"  WARN: could not load onboarding sheet ({e})")
-    return out, notes_out
+    return out, notes_out, pending, ehr_out
 
-onboarding_by_ods, onboarding_notes_by_ods = load_onboarding_steps()
+onboarding_by_ods, onboarding_notes_by_ods, onboarding_pending, sheet_ehr_by_ods = load_onboarding_steps()
 
 # Stage IDs + keys are STABLE; labels are live from HubSpot (carried for display only).
 # All logic keys off `key`, never the label — so a HubSpot rename flows through cleanly.
@@ -508,6 +527,58 @@ def geo_name_fallback(dealname):
     cands = _geo_names.get(_norm_name(dealname.replace(" - Planner", "")))
     return cands[0] if cands and len(cands) == 1 else None
 
+# ---------- failsafe: tracker rows whose ODS cell is blank ----------
+# The sheet's ODS Code cell is the hub's join key and it's hand-typed — an
+# edit wiped Fakenham's on 2026-08-11 and its checklist vanished. Rows held
+# back by load_onboarding_steps() are resolved here by practice name:
+# HubSpot deal names first (they carry a company-verified ODS), then a
+# unique match in the NHS directory. Ambiguous names stay unresolved and are
+# surfaced as a data warning rather than silently dropped.
+_deal_norm2ods = {}
+for _d in planner["deals"]:
+    _nm = PAID_PREFIX_RE.sub("", (_d.get("dealname") or ""), count=1).replace(" - Planner", "").strip()
+    _o = deal_id2ods.get(str(_d.get("_id"))) or dealname2ods.get((_d.get("dealname") or "").strip().lower())
+    if _nm and _o:
+        _deal_norm2ods.setdefault(_norm_name(_nm), set()).add(_o)
+
+onb_fallback_matched, onb_fallback_actionable, onb_unresolved = [], [], []
+for _row in onboarding_pending:
+    _n = _norm_name(_row["name"])
+    _ods, _how = None, None
+    _cands = _deal_norm2ods.get(_n)
+    if _cands and len(_cands) == 1:
+        _ods, _how = next(iter(_cands)), "HubSpot deal"
+    else:
+        _g = _geo_names.get(_n)
+        if _g and len(_g) == 1:
+            _ods, _how = _g[0], "NHS directory"
+    _active = (_row.get("status") or "").strip().lower() in ("live", "in progress")
+    if _ods and _ods not in onboarding_by_ods:
+        onboarding_by_ods[_ods] = _row["steps"]
+        if _row.get("note"):
+            onboarding_notes_by_ods[_ods] = _row["note"]
+        if _row.get("ehr"):
+            sheet_ehr_by_ods.setdefault(_ods, _row["ehr"])
+        onb_fallback_matched.append(f"{_row['name']} -> {_ods} (via {_how})")
+        if _active:
+            onb_fallback_actionable.append(f"{_row['name']} -> {_ods}")
+    elif not _ods and _active:
+        onb_unresolved.append(_row["name"])
+if onb_fallback_matched:
+    print(f"  onboarding fallback: {len(onb_fallback_matched)} sheet row(s) without ODS matched by name: "
+          + "; ".join(onb_fallback_matched))
+if onb_unresolved:
+    print(f"  WARN: {len(onb_unresolved)} In-Progress tracker row(s) have no ODS and no name match: "
+          + ", ".join(onb_unresolved))
+
+# Sheet EHR values are shorthand — normalise to the HubSpot ehr_type labels
+# the dashboard's badges/logic key on.
+_SHEET_EHR_MAP = {"s1": "SystmOne", "systmone": "SystmOne", "tpp": "SystmOne",
+                  "emis": "EMIS", "medicus": "Medicus"}
+def sheet_ehr(ods):
+    v = (sheet_ehr_by_ods.get(ods) or "").strip()
+    return _SHEET_EHR_MAP.get(v.lower(), v) if v else None
+
 def to_amount(v):
     """Parse a HubSpot deal `amount` into a float, or None if blank/unparseable."""
     if v in (None, ""):
@@ -621,7 +692,9 @@ for d in planner["deals"]:
     bl_pct = pct_of_list(bl_total, patients)
     pctm = lambda rec: ({m: round(c / patients * 100, 1) for m, c in rec.items()} if patients else {})
 
-    ehr = d.get("ehr_type") or "Unknown"
+    # EHR: HubSpot deal property first, tracker sheet's EHR column as fallback
+    # (resolved after `ods` exists — see the sheet_ehr helper above).
+    ehr = d.get("ehr_type") or (sheet_ehr(ods) if ods else None) or "Unknown"
     onb_steps = onboarding_by_ods.get(ods) if ods else None
     # SystmOne (TPP) practices need no EMIS notification or sharing agreement —
     # blank those steps as N/A so they don't count as outstanding (Will, 2026-06-27).
@@ -1048,6 +1121,12 @@ if dropped_dups:
     data_warnings.append(f"{len(dropped_dups)} duplicate deal(s) hidden: " + "; ".join(dropped_dups))
 if skipped_blank:
     data_warnings.append(f"{skipped_blank} blank junk deal(s) skipped (channel-partner import 21 May) — archive them in HubSpot")
+if onb_fallback_actionable:
+    data_warnings.append(f"{len(onb_fallback_actionable)} active tracker row(s) missing an ODS code were matched by name — "
+                         "fill the ODS Code cell to make it permanent: " + "; ".join(onb_fallback_actionable))
+if onb_unresolved:
+    data_warnings.append(f"{len(onb_unresolved)} In-Progress tracker row(s) have no ODS code and no name match — "
+                         "their checklists are invisible until the ODS Code cell is filled: " + ", ".join(onb_unresolved))
 
 # --- KPI history: tiny daily snapshot appended on every build (drives WoW deltas) ---
 _dest = ROOT / "apps/primary-care-tech-overview/public/data/funnel_board.json"
