@@ -95,6 +95,10 @@ jobs:
 
       - name: Build site
         working-directory: apps/tech-growth-map
+        env:
+          # Bakes the Google SSO gate into the build (same OAuth client as the
+          # Planner dashboard). Unset locally -> auth disabled in dev.
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: npm ci && npx vite build
 
       - name: Upload Pages artifact

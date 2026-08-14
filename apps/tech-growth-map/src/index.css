@@ -801,3 +801,10 @@ path.leaflet-interactive,
         border-right: none; border-bottom: 1px solid #e2e8f0;
     }
 }
+
+/* ---- Google sign-in gate (matches the Recalls Overview app) ---- */
+.signin-gate { max-width: 420px; margin: 16vh auto 0; text-align: center; padding: 36px 32px; }
+.signin-logo { height: 36px; width: auto; display: block; margin: 0 auto 20px; }
+.signin-gate h1 { font-size: 21px; margin: 0 0 8px; color: #1e293b; }
+.signin-gate p { color: #475569; margin: 0 0 22px; }
+.signin-gate > div:last-child { display: flex; justify-content: center; }
