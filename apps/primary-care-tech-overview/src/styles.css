@@ -353,6 +353,7 @@ h1, h2, h3 { letter-spacing: -0.01em; color: var(--su-ink); }
 .rt-fig.op { font-size: 20px; font-weight: 400; color: var(--su-faint); align-self: center; }
 .rt-stage-table { margin-top: 6px; }
 .rt-stage-total td { border-top: 1.5px solid var(--su-hairline); font-weight: 700; }
+.rt-signed-table .t-date { white-space: nowrap; }
 
 /* ============================================================
    Chips & toggles — pills (brand gradient when active)

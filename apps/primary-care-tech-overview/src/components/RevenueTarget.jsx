@@ -70,6 +70,37 @@ const gbp = (n) => {
 
 const daysBetween = (a, b) => Math.round((b - a) / 86_400_000);
 
+// "2026-06-12" → "12 Jun '26"
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const [y, mo, d] = iso.split("-").map(Number);
+  return `${d} ${MONTHS[mo - 1]} '${String(y).slice(2)}`;
+};
+
+// Per-deal breakdown of the committed ARR, derived from the full deal rows
+// (which carry stage_timeline). "Signed" = the date the deal entered the DPA
+// Signed stage in HubSpot; "time to sign" = first pipeline entry → that date.
+function signedBreakdown(deals) {
+  return deals
+    .filter((d) => d.paid && (d.amount || 0) > 0)
+    .map((d) => {
+      const tl = d.stage_timeline || [];
+      const signed = tl.find((t) => /dpa signed/i.test(t.stage)) || tl[tl.length - 1];
+      const signedDate = signed?.date || null;
+      const first = tl[0]?.date || null;
+      const daysToSign = signedDate && first
+        ? daysBetween(new Date(first + "T00:00:00"), new Date(signedDate + "T00:00:00"))
+        : null;
+      return {
+        name: d.name, ods: d.ods, patients: d.patients || null, amount: d.amount,
+        signedDate, daysToSign,
+        perPatient: d.patients ? d.amount / d.patients : null,
+      };
+    })
+    .sort((a, b) => (a.signedDate || "9999").localeCompare(b.signedDate || "9999"));
+}
+
 // Shared revenue model — committed ARR, the active checkpoint, and a
 // scenario-weighted pipeline forecast. Both the hero and the detail consume it.
 function useRevenueModel(revenue, deals = [], scenario = "base") {
@@ -189,6 +220,17 @@ export function RevenueDetail({ revenue, deals = [] }) {
     .map((s) => ({ stage: s, ...m.forecast.byStage[s] }))
     .filter((r) => r.practices > 0);
 
+  const signed = useMemo(() => signedBreakdown(deals), [deals]);
+  const signedTotals = useMemo(() => {
+    const patients = signed.reduce((a, r) => a + (r.patients || 0), 0);
+    const amount = signed.reduce((a, r) => a + r.amount, 0);
+    const days = signed.map((r) => r.daysToSign).filter((d) => d != null).sort((a, b) => a - b);
+    const median = days.length ? days[Math.floor(days.length / 2)] : null;
+    // blended £/patient over deals where list size is known
+    const knownAmount = signed.reduce((a, r) => a + (r.patients ? r.amount : 0), 0);
+    return { patients, amount, median, perPatient: patients ? knownAmount / patients : null };
+  }, [signed]);
+
   return (
     <>
       <div className="so-head">
@@ -231,6 +273,50 @@ export function RevenueDetail({ revenue, deals = [] }) {
             </tbody>
           </table>
         </div>
+
+        {signed.length > 0 && (
+          <div className="so-section">
+            <h4 className="so-section-title">
+              Signed customers <em className="cur-key">what makes up the {gbp(m.arr)}</em>
+            </h4>
+            <table className="dtable revtarget-table rt-signed-table">
+              <thead>
+                <tr>
+                  <th>Practice</th>
+                  <th className="td-num">Patients</th>
+                  <th>Signed</th>
+                  <th className="td-num">Time to sign</th>
+                  <th className="td-num">£/patient</th>
+                  <th className="td-num">ARR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signed.map((r) => (
+                  <tr key={r.ods || r.name}>
+                    <td className="t-name">{r.name}</td>
+                    <td className="td-num t-dim">{r.patients ? r.patients.toLocaleString() : "—"}</td>
+                    <td className="t-dim t-date">{fmtDate(r.signedDate)}</td>
+                    <td className="td-num t-dim">{r.daysToSign != null ? `${r.daysToSign}d` : "—"}</td>
+                    <td className="td-num t-dim">{r.perPatient != null ? `${Math.round(r.perPatient * 100)}p` : "—"}</td>
+                    <td className="td-num">{gbp(r.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="rt-stage-total">
+                  <td className="t-name">{signed.length} paying practices</td>
+                  <td className="td-num t-dim">{signedTotals.patients.toLocaleString()}</td>
+                  <td className="t-dim"></td>
+                  <td className="td-num t-dim">{signedTotals.median != null ? `${signedTotals.median}d median` : "—"}</td>
+                  <td className="td-num t-dim">{signedTotals.perPatient != null ? `${Math.round(signedTotals.perPatient * 100)}p` : "—"}</td>
+                  <td className="td-num">{gbp(signedTotals.amount)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="card-foot" style={{ marginTop: 10 }}>
+              <b>Signed</b> = the date the deal entered DPA Signed in HubSpot. <b>Time to sign</b> = first
+              pipeline entry → DPA signed. Paying deals are flagged by the "PAID -" deal-name prefix.
+            </p>
+          </div>
+        )}
 
         <div className="so-section">
           <div className="rt-forecast-head">
@@ -292,12 +378,7 @@ export function RevenueDetail({ revenue, deals = [] }) {
           </table>
 
           <p className="card-foot" style={{ marginTop: 14 }}>
-            <b>Signed &amp; paid</b> = a genuinely signed, paying contract
-            {m.signedDeals.length ? ": " : " — £0 until the first deal signs. "}
-            {m.signedDeals.map((d, i) => (
-              <span key={d.ods || d.name}>{i ? " · " : ""}{d.name} {gbp(d.amount)}</span>
-            ))}
-            {m.signedDeals.length ? ". " : ""}
+            <b>Signed &amp; paid</b> = a genuinely signed, paying contract (the table above).
             Everything else is <b>not yet signed</b> — HubSpot prices are <i>quotes</i>, valued at their quote
             {m.forecast.contractedCount ? ` (${m.forecast.contractedCount} deal${m.forecast.contractedCount > 1 ? "s" : ""}, ${gbp(m.forecast.contractedValue)} quoted)` : ""},
             else {Math.round(PRICE_PER_PATIENT * 100)}p/patient, × each stage's conversion. The {STAGE_LABEL.live} row is
