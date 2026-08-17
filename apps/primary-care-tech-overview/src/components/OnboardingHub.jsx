@@ -796,9 +796,14 @@ function HubDetail({ deal, liveOnb, toggleStep, setStepState, notes, addNote, ed
   const { done, total, next } = summarizeOnboarding(steps);
   const pct = total ? Math.round((done / total) * 100) : 0;
   const _rank = { done: 0, pending: 1, todo: 2 };
+  // Done steps order by when they were done; outstanding steps keep checklist
+  // order (not last-touched), so the finale — Recall Session — stays at the end.
+  const _order = new Map(steps.map((s, i) => [s.key, i]));
   const stepTimeline = [...steps].sort((a, b) =>
     ((_rank[a.state] ?? 3) - (_rank[b.state] ?? 3)) ||
-    ((a.changed_at ? Date.parse(a.changed_at) : Infinity) - (b.changed_at ? Date.parse(b.changed_at) : Infinity))
+    (a.state === "done" && b.state === "done"
+      ? ((a.changed_at ? Date.parse(a.changed_at) : Infinity) - (b.changed_at ? Date.parse(b.changed_at) : Infinity))
+      : (_order.get(a.key) - _order.get(b.key)))
   );
   const facts = [
     { l: "ODS code", v: deal.ods, copy: deal.ods },
