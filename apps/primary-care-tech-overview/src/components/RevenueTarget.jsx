@@ -78,6 +78,48 @@ const fmtDate = (iso) => {
   return `${d} ${MONTHS[mo - 1]} '${String(y).slice(2)}`;
 };
 
+// Monday of the week containing an ISO date (UTC arithmetic — these are plain
+// dates, so local-timezone Date maths would shift them around midnight).
+const weekStart = (iso) => {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+};
+const plusWeek = (iso) => {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 7);
+  return d.toISOString().slice(0, 10);
+};
+// "2026-06-08" → "8 Jun"
+const fmtWeek = (iso) => {
+  const [, mo, d] = iso.split("-").map(Number);
+  return `${d} ${MONTHS[mo - 1]}`;
+};
+
+// Week-on-week signed ARR: every week from the first signing to today, with
+// that week's newly signed £ and the running cumulative. Zero weeks included —
+// a flat fortnight should look flat.
+function weeklySignedArr(signed, todayISO) {
+  const dated = signed.filter((r) => r.signedDate);
+  if (!dated.length) return [];
+  const byWeek = {};
+  for (const r of dated) {
+    const w = weekStart(r.signedDate);
+    (byWeek[w] ??= { newArr: 0, deals: 0 });
+    byWeek[w].newArr += r.amount;
+    byWeek[w].deals += 1;
+  }
+  const out = [];
+  const last = weekStart(todayISO);
+  let cum = 0;
+  for (let w = weekStart(dated[0].signedDate); w <= last && out.length < 60; w = plusWeek(w)) {
+    const b = byWeek[w] || { newArr: 0, deals: 0 };
+    cum += b.newArr;
+    out.push({ week: w, ...b, cum });
+  }
+  return out.slice(-12);
+}
+
 // Per-deal breakdown of the committed ARR, derived from the full deal rows
 // (which carry stage_timeline). "Signed" = the date the deal entered the DPA
 // Signed stage in HubSpot; "time to sign" = first pipeline entry → that date.
@@ -221,6 +263,10 @@ export function RevenueDetail({ revenue, deals = [] }) {
     .filter((r) => r.practices > 0);
 
   const signed = useMemo(() => signedBreakdown(deals), [deals]);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const weekly = useMemo(() => weeklySignedArr(signed, todayISO), [signed, todayISO]);
+  const thisWeek = weekly[weekly.length - 1];
+  const lastWeek = weekly[weekly.length - 2];
   const signedTotals = useMemo(() => {
     const patients = signed.reduce((a, r) => a + (r.patients || 0), 0);
     const amount = signed.reduce((a, r) => a + r.amount, 0);
@@ -279,6 +325,35 @@ export function RevenueDetail({ revenue, deals = [] }) {
             <h4 className="so-section-title">
               Signed customers <em className="cur-key">what makes up the {gbp(m.arr)}</em>
             </h4>
+
+            {weekly.length > 1 && (
+              <div className="rt-wow">
+                <div className="dd-spark-head">
+                  <span className="dd-spark-fy">
+                    Week on week — <b>{thisWeek.newArr ? `+${gbp(thisWeek.newArr)}` : "£0"}</b> signed this week
+                    {lastWeek ? ` · ${lastWeek.newArr ? `+${gbp(lastWeek.newArr)}` : "£0"} last week` : ""}
+                  </span>
+                </div>
+                <div className="dd-spark rt-wow-bars">
+                  {weekly.map((x) => (
+                    <div
+                      key={x.week}
+                      className="spark-col"
+                      title={`w/c ${fmtWeek(x.week)} · ${x.newArr ? `+${gbp(x.newArr)} new (${x.deals} deal${x.deals > 1 ? "s" : ""})` : "no new signings"} · ${gbp(x.cum)} total`}
+                    >
+                      <span className="spark-val">{x.newArr ? `+${gbp(x.newArr)}` : " "}</span>
+                      <div
+                        className="spark-bar"
+                        data-cur={x.week === weekStart(todayISO) ? "1" : undefined}
+                        style={{ height: `${Math.max(3, Math.round((x.cum / (weekly[weekly.length - 1].cum || 1)) * 46))}px` }}
+                      />
+                      <span className="spark-m">{fmtWeek(x.week)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <table className="dtable revtarget-table rt-signed-table">
               <thead>
                 <tr>
