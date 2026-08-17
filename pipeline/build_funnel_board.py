@@ -75,8 +75,11 @@ ONBOARD_STEPS = [
     ("HeroHealth",                 "herohealth",           {"set up"}),
     ("Onboarding Call",            "onboarding_call",      {"held"}),
     ("Appt Config",                "appt_config",          {"uploaded"}),
-    ("Recall Session",             "recall_session",       {"held"}),
+    # Bloods automation (whitelisting) deliberately sits BEFORE the recall
+    # session: the session is the finale, so anything still blocking it —
+    # like whitelisting — should surface as the next action (Will, 2026-08-17).
     ("Bloods automation",          "bloods_automation",    {"done"}),
+    ("Recall Session",             "recall_session",       {"held"}),
 ]
 GSHEET_SAAS = ("https://docs.google.com/spreadsheets/d/e/2PACX-1vRa6zIwdwnNSfjjU_gVYdZ7Pm6Sy6"
                "XWsyVe0gR6AZP55IzeVW9qisAUb0Hvo4Nr7qdGhWLnK1l4SDnl/pub?output=csv&gid=0")
