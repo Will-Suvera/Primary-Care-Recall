@@ -9,6 +9,30 @@ import BottomStrip from './BottomStrip'
 const snapshotCache = {}
 const BASE = import.meta.env.BASE_URL
 
+// PAID deals by DPA-signed date (HubSpot "PAID -" deals, Planner pipeline).
+// Authoritative for when each gold dot appears while scrubbing the timeline —
+// snapshots predating the paid tier have no paid_ods, so without this the
+// gold would pop in at the wrong date. Pulled 27 Aug 2026; append new
+// signings here (ods: 'YYYY-MM-DD').
+const PAID_SIGNED_DATES = {
+  C81047: '2026-06-12', // Alvaston Medical Centre
+  Y04925: '2026-06-12', // Chapelford Primary Care Centre
+  J82139: '2026-07-13', // Wistaria and Milford Surgeries
+  N81011: '2026-07-28', // Bevan Group Practice
+  D82054: '2026-07-30', // Fakenham Medical Practice
+  N81039: '2026-07-31', // Oaklands
+  L81051: '2026-08-19', // 168 Medical Group
+  F81144: '2026-08-24', // The Pall Mall Surgery (SS9 South PCN)
+}
+
+function paidOdsOnDate(dateStr) {
+  const set = new Set()
+  for (const [ods, signed] of Object.entries(PAID_SIGNED_DATES)) {
+    if (signed <= dateStr) set.add(ods)
+  }
+  return set
+}
+
 async function loadSnapshot(dateStr) {
   if (snapshotCache[dateStr]) return snapshotCache[dateStr]
   try {
@@ -225,12 +249,16 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
       setLiveOds(toSet(snap.live_ods))
       setWaitlistOds(toSet(snap.waitlist_ods))
       // Apply every tier the snapshot carries, so scrubbing shows the tier a
-      // practice actually had on that date. Older snapshots predate paid_ods /
-      // onboarding_ods: paid falls back to EMPTY (gold didn't exist then, and
-      // today's set would paint history gold); onboarding keeps the current
-      // set (its practices were still live/waitlist members back then).
+      // practice actually had on that date. Onboarding keeps the current set
+      // when absent (its practices were still live/waitlist members back then).
       setFullPlannerOds(toSet(snap.live_full_planner_ods))
-      setPaidOds(toSet(snap.paid_ods))
+      // Paid (gold): union of the snapshot's set with the authoritative
+      // signed-date list, so each gold dot appears exactly when its deal
+      // signed — including on snapshots that predate the paid tier — and
+      // deals signed after the hardcoded list still show via the snapshot.
+      const paid = paidOdsOnDate(entry.date)
+      for (const ods of toSet(snap.paid_ods)) paid.add(ods)
+      setPaidOds(paid)
       if (snap.onboarding_ods) setOnboardingOds(toSet(snap.onboarding_ods))
     }, 80)
 
