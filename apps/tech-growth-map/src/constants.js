@@ -17,10 +17,10 @@ export const MARKER_STYLES = {
   // Gold tier (paying customers) — the headline: big, bright, dark ring.
   // Every other tier is deliberately muted so the gold reads first.
   paid: { color: '#78350f', fillColor: '#f5b301', radius: 10, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
-  fullPlanner: { color: '#2f9e5f', fillColor: '#86efac', radius: 5.5, fillOpacity: 0.85, weight: 1.5, opacity: 0.85 },
+  fullPlanner: { color: '#238b50', fillColor: '#5fdd94', radius: 6.5, fillOpacity: 0.95, weight: 1.8, opacity: 0.95 },
   inProgress: { color: '#5b8def', fillColor: '#a8c8fa', radius: 4, fillOpacity: 0.7, weight: 1, opacity: 0.7 },
   // Signed-up: small purple dots (amber clashed with the gold paid markers)
-  waitlist: { color: '#9b7fd4', fillColor: '#c4b0ec', radius: 3.5, fillOpacity: 0.6, weight: 1, opacity: 0.6 },
+  waitlist: { color: '#8863cc', fillColor: '#b295e6', radius: 4.2, fillOpacity: 0.72, weight: 1.2, opacity: 0.72 },
   notSigned: { color: '#d7defc', fillColor: '#c3cdf7', radius: 3, fillOpacity: 0.42, weight: 0.3, opacity: 0.5 },
 }
 
