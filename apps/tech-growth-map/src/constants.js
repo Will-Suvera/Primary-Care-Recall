@@ -14,13 +14,14 @@ export const MAP_ZOOM = 6
 export const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
 export const MARKER_STYLES = {
-  // Gold tier (paying customers) — rich gold with a dark ring.
-  paid: { color: '#92600a', fillColor: '#eab308', radius: 7.5, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
-  fullPlanner: { color: '#15803d', fillColor: '#22c55e', radius: 7, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
-  inProgress: { color: '#1d4ed8', fillColor: '#60a5fa', radius: 5, fillOpacity: 0.9, weight: 1.5, opacity: 0.9 },
+  // Gold tier (paying customers) — the headline: big, bright, dark ring.
+  // Every other tier is deliberately muted so the gold reads first.
+  paid: { color: '#78350f', fillColor: '#f5b301', radius: 10, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
+  fullPlanner: { color: '#2f9e5f', fillColor: '#86efac', radius: 5.5, fillOpacity: 0.85, weight: 1.5, opacity: 0.85 },
+  inProgress: { color: '#5b8def', fillColor: '#a8c8fa', radius: 4, fillOpacity: 0.7, weight: 1, opacity: 0.7 },
   // Signed-up: small purple dots (amber clashed with the gold paid markers)
-  waitlist: { color: '#6d44c8', fillColor: '#8b5cf6', radius: 4, fillOpacity: 0.8, weight: 1.5, opacity: 0.8 },
-  notSigned: { color: '#c7d2fe', fillColor: '#a5b4fc', radius: 3.125, fillOpacity: 0.58, weight: 0.3, opacity: 0.7 },
+  waitlist: { color: '#9b7fd4', fillColor: '#c4b0ec', radius: 3.5, fillOpacity: 0.6, weight: 1, opacity: 0.6 },
+  notSigned: { color: '#d7defc', fillColor: '#c3cdf7', radius: 3, fillOpacity: 0.42, weight: 0.3, opacity: 0.5 },
 }
 
 export const ICB_STYLES = {
