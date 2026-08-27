@@ -81,10 +81,18 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
       attributionControl: true,
     })
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      subdomains: 'abcd',
+    // CARTO free basemaps started requiring an API key (Aug 2026) — Esri's
+    // Light Gray Canvas is keyless and matches the muted style the status
+    // dots depend on. Native tiles stop at z16; Leaflet upscales beyond.
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; &copy; OpenStreetMap contributors',
+      maxNativeZoom: 16,
       maxZoom: 19,
+    }).addTo(map)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 16,
+      maxZoom: 19,
+      pane: 'tilePane',
     }).addTo(map)
 
     map.createPane('icbPane')

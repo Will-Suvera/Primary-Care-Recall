@@ -553,6 +553,33 @@ path.leaflet-interactive,
     box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 
+/* Gold from the first PAID deal (Alvaston, 12 Jun 2026) onwards */
+.timeline-mini-track-wrap {
+    position: relative; flex: 1; display: flex; align-items: center;
+}
+.timeline-mini-date.paid-era { color: #b8860b; }
+.timeline-mini-slider.paid-era { accent-color: #d4a017; }
+.timeline-mini-slider.paid-era::-webkit-slider-thumb {
+    background: #d4a017;
+    box-shadow: 0 1px 6px rgba(212,160,23,0.55);
+}
+.timeline-mini-slider.paid-era::-moz-range-thumb {
+    background: #d4a017;
+    box-shadow: 0 1px 6px rgba(212,160,23,0.55);
+}
+.timeline-mini-milestone {
+    position: absolute; top: 50%;
+    width: 7px; height: 7px; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: #d4a017; border: 1px solid #fff;
+    box-shadow: 0 0 4px rgba(212,160,23,0.7);
+    pointer-events: auto; cursor: help;
+}
+.timeline-mini-milestone.multi {
+    width: 10px; height: 10px;
+    box-shadow: 0 0 6px rgba(212,160,23,0.9);
+}
+
 /* ---- Bottom strip (Patient Care + Biggest Mover + Live Activity) ---- */
 .bottom-strip {
     position: absolute; bottom: 20px; left: 20px; right: 20px;
