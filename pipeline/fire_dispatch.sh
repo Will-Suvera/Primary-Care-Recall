@@ -21,11 +21,11 @@
 #
 # Required scopes on the GitHub token:
 #   - Classic PAT: `repo` (or `public_repo` for public repos)
-#   - Fine-grained: "Contents: read-and-write" on Will-Suvera/Tech-growth-map
+#   - Fine-grained: "Contents: read-and-write" on Will-Suvera/Primary-Care-Recall
 #                   (repository_dispatch fires under Contents, not Actions)
 #
 # Optional env vars:
-#   REPO        default: Will-Suvera/Tech-growth-map
+#   REPO        default: Will-Suvera/Primary-Care-Recall
 #   EVENT_TYPE  default: hubspot-waitlist-changed (must match workflow)
 #   SOURCE      default: manual (free-form label logged in run metadata)
 #
@@ -34,7 +34,7 @@
 #   2. Trigger: "Contact added to list" → list 1535 (and a second
 #      workflow for "Contact removed from list" → list 1535)
 #   3. Action: "Send a webhook"
-#        URL:    https://api.github.com/repos/Will-Suvera/Tech-growth-map/dispatches
+#        URL:    https://api.github.com/repos/Will-Suvera/Primary-Care-Recall/dispatches
 #        Method: POST
 #        Headers:
 #          Authorization: token <GITHUB_PAT>
@@ -46,7 +46,7 @@
 set -euo pipefail
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN env var is required (classic PAT with 'repo' scope)}"
-REPO="${REPO:-Will-Suvera/Tech-growth-map}"
+REPO="${REPO:-Will-Suvera/Primary-Care-Recall}"
 EVENT_TYPE="${EVENT_TYPE:-hubspot-waitlist-changed}"
 SOURCE="${SOURCE:-manual}"
 

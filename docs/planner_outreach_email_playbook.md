@@ -13,8 +13,8 @@ The data refreshes itself. A GitHub Action in this repo pulls HubSpot every 5 mi
 **One-time setup (~3 min):**
 
 ```bash
-git clone https://github.com/Will-Suvera/Tech-growth-map.git
-cd Tech-growth-map
+git clone https://github.com/Will-Suvera/Primary-Care-Recall.git
+cd Primary-Care-Recall
 pip install -r requirements.txt        # staticmap, Pillow, openpyxl
 ```
 
