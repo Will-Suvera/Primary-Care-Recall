@@ -126,6 +126,7 @@ export default function App() {
               <a href="#weekly">Week-by-week</a>
               <a href="#revenue">Revenue goal</a>
               <a href="#sources">Lead sources</a>
+              <a href="#stalls">Time to go-live & stalls</a>
             </div>
             <div className="su-spacer" />
           </>
@@ -147,7 +148,7 @@ export default function App() {
         ) : tab === "onboarding" ? (
           <OnboardingHub data={data} visits={visits} auth={auth.user} />
         ) : (
-          <FunnelBoard data={data} auth={auth.user} />
+          <FunnelBoard data={data} auth={auth.user} visits={visits} />
         )}
       </main>
     </div>

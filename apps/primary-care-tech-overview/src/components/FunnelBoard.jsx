@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { RevenueHero, RevenueDetail } from "./RevenueTarget.jsx";
+import StallAnalysis from "./StallAnalysis.jsx";
 import { firstNameFromEmail, mergeOnboarding, summarizeOnboarding, useOnboarding } from "../onboarding.js";
 
 // Stage KEYS are stable; display labels come live from the data (funnel_board.json),
@@ -60,7 +61,7 @@ const funnelNote = (s) => {
   return stale ? `${stale} stale` : "moving";
 };
 
-export default function FunnelBoard({ data, auth = null }) {
+export default function FunnelBoard({ data, auth = null, visits = {} }) {
   const [ehr] = useState("All");
   const [open, setOpen] = useState(null); // deal-stage key | "live_gap" | "recalling"
   const [showWeekly, setShowWeekly] = useState(false);
@@ -339,6 +340,9 @@ export default function FunnelBoard({ data, auth = null }) {
           </section>
         </div>
       </div>
+
+      {/* ── sign-up → go-live stall analysis: full-width below the grid ── */}
+      <StallAnalysis deals={data.deals} recallers={data.recalling_practices} visits={visits} liveOnb={liveOnb} auth={auth} onOpen={openDeal} />
 
       {/* ── drill-ins: full-width below the grid ── */}
       {openStage && open !== "live_gap" && open !== "recalling" && (

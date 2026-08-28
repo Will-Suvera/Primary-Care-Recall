@@ -678,6 +678,11 @@ for d in planner["deals"]:
         stage_timeline.append({"stage": slabel, "date": sdt.date().isoformat(),
                                "gap_days": gap, "current": sid == cur})
         _prev_dt = sdt
+    # stage-entry dates keyed by STABLE stage key (+ the deal's create date) — the
+    # sign-up→go-live stall analysis on the Overview clocks from these.
+    stage_dates = {skey: parse(d.get(f"hs_v2_date_entered_{sid}")).date().isoformat()
+                   for sid, skey, _ in STAGES if parse(d.get(f"hs_v2_date_entered_{sid}"))}
+    _created = parse(d.get("createdate"))
     patients = p.get("patients") or geo.get("patients")
     rec_months = dict(recalls_by_ods_month.get(ods, {}) if ods else {})
     recalls_tm = recalls_tm_by_ods.get(ods, rec_months.get(CUR_MONTH, 0)) if ods else 0
@@ -730,6 +735,8 @@ for d in planner["deals"]:
         "tier": ("Gold" if is_paid else p.get("tier")),
         "pcn_name": p.get("pcn_name") or geo.get("pcn_name"), "amount": to_amount(d.get("amount")),
         "stage_durations": durations, "stage_timeline": stage_timeline,
+        "created": _created.date().isoformat() if _created else None,
+        "stage_dates": stage_dates,
         "onboarding": onb_steps,
         "onboarding_sessions": (onb_sessions_by_ods.get(ods) if ods else None) or onb_sessions_by_deal.get(str(d.get("_id"))) or [],
         "other_meetings": (other_meetings_by_ods.get(ods) if ods else None) or other_meetings_by_deal.get(str(d.get("_id"))) or [],

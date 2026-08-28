@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path";
 import { neon } from "@neondatabase/serverless";
 import {
   makeNotesHub, makeDealLiveSetter, makeDealDroppedSetter,
-  getCurrent, getHistory, getNotes, postStep, postNote, editNote, deleteNote,
+  getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
 } from "./onboarding-core.mjs";
 
@@ -86,6 +86,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/onboarding/board") return send(readData("funnel_board.json"));
     if (req.method === "GET" && p === "/api/onboarding/visits") return send(readData("practice_visits.json", {}));
     if (req.method === "GET" && p === "/api/onboarding") return send(await getCurrent(sql));
+    if (req.method === "GET" && p === "/api/onboarding/events") return send(await getEvents(sql));
     if (req.method === "GET" && p === "/api/onboarding/history") return send(await getHistory(sql, url.searchParams.get("ods")));
     if (req.method === "GET" && p === "/api/onboarding/notes") return send(await getNotes(sql));
     if (req.method === "POST" && p === "/api/onboarding/step") return send(await postStep(sql, await readBody(req)));

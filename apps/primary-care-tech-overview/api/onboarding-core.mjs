@@ -79,6 +79,22 @@ export async function getCurrent(sql) {
   return result(out);
 }
 
+// GET /api/onboarding/events → the whole event log for the stall analysis:
+//   { steps: [{ods, step_key, from_state, to_state, changed_by, changed_at, note}],   // human/app events only
+//     blocks: [{ods, step_key, waiting_on, reason, blocked_at, cleared_at}] }          // incl. cleared
+// Seed rows are excluded: their changed_at is the seed time, not when the step
+// really happened, so they'd poison time-in-step maths.
+const SEED_AUTHORS = ["sheet-seed", "seed-correction", "selftest", "hub-verify-reset"];
+export async function getEvents(sql) {
+  const steps = await sql`select ods, deal_id, step_key, from_state, to_state, changed_by, changed_at, note
+    from onboarding_step_events
+    where changed_by is null or changed_by <> all(${SEED_AUTHORS})
+    order by changed_at asc`;
+  const blocks = await sql`select ods, step_key, waiting_on, reason, blocked_by, blocked_at, cleared_at
+    from onboarding_blocks order by blocked_at asc`;
+  return result({ steps, blocks });
+}
+
 // GET /api/onboarding/history?ods= → full event log for one practice (time-in-step / audit)
 export async function getHistory(sql, ods) {
   if (!ods) return result({ error: "ods required" }, 400);

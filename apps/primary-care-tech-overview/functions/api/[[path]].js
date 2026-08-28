@@ -20,7 +20,7 @@
 import { neon } from "@neondatabase/serverless";
 import {
   makeNotesHub, makeDealLiveSetter, makeDealDroppedSetter, firstNameFromEmail,
-  getCurrent, getHistory, getNotes, postStep, postNote, editNote, deleteNote,
+  getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
 } from "../../api/onboarding-core.mjs";
 // The dashboard data (generated fresh in CI) is bundled into this Function and
@@ -171,6 +171,7 @@ export async function onRequest(context) {
       if (sub === "/board") return J({ status: 200, body: boardData });
       if (sub === "/visits") return J({ status: 200, body: visitsData });
       if (sub === "/history") return J(await getHistory(sql, url.searchParams.get("ods")));
+      if (sub === "/events") return J(await getEvents(sql));
       if (sub === "/notes") return J(await getNotes(sql));
       if (sub === "/blocks") return J(await getBlocks(sql));
       if (sub === "/live") return J(await getLive(sql));
