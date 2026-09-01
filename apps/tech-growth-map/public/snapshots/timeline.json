@@ -3237,7 +3237,7 @@
   },
   {
     "date": "2026-09-01",
-    "timestamp": "2026-09-01T10:12:10.866383+00:00",
+    "timestamp": "2026-09-01T10:17:47.752684+00:00",
     "practices": {
       "live_planner": 24,
       "live_full_planner": 35,
@@ -3251,8 +3251,8 @@
       "live_planner": 247250,
       "live_full_planner": 512930,
       "live": 760180,
-      "waitlist": 4529736,
-      "pipeline": 5289916
+      "waitlist": 4532982,
+      "pipeline": 5293162
     }
   }
 ]
