@@ -17,97 +17,11 @@
       "2026-07": 4241,
       "2026-08": 2928
     },
-    "practices_this_month": [
-      {
-        "name": "Ringmead Medical Group",
-        "count": 1008,
-        "ods": "K81030"
-      },
-      {
-        "name": "Cape Hill Medical Centre",
-        "count": 452,
-        "ods": "M88006"
-      },
-      {
-        "name": "Wistaria Milford Surgeries",
-        "count": 260,
-        "ods": "J82139"
-      },
-      {
-        "name": "Alma Road Surgery",
-        "count": 257,
-        "ods": "J82074"
-      },
-      {
-        "name": "Maltings Surgery",
-        "count": 232,
-        "ods": "E82031"
-      },
-      {
-        "name": "Twyford Surgery",
-        "count": 187,
-        "ods": "J82116"
-      },
-      {
-        "name": "Old Parsonage Surgery",
-        "count": 142,
-        "ods": "G82224"
-      },
-      {
-        "name": "Priory View Medical Centre",
-        "count": 86,
-        "ods": "B86024"
-      },
-      {
-        "name": "Voyager Family Health",
-        "count": 79,
-        "ods": "J82067"
-      },
-      {
-        "name": "Lodge Highfield Redbourn",
-        "count": 73,
-        "ods": "E82014"
-      },
-      {
-        "name": "Standish Medical Practice",
-        "count": 66,
-        "ods": "P92014"
-      },
-      {
-        "name": "Bishops Waltham Surgery",
-        "count": 35,
-        "ods": "J82064"
-      },
-      {
-        "name": "Chineham Medical Practice",
-        "count": 24,
-        "ods": "J82218"
-      },
-      {
-        "name": "Oaklands Medical Centre",
-        "count": 16,
-        "ods": "E85096"
-      },
-      {
-        "name": "Chapelford Primary Care Centre",
-        "count": 7,
-        "ods": "Y04925"
-      },
-      {
-        "name": "West Barnes Surgery",
-        "count": 3,
-        "ods": "H85055"
-      },
-      {
-        "name": "Fakenham Medical Practice",
-        "count": 1,
-        "ods": "D82054"
-      }
-    ],
+    "practices_this_month": [],
     "fy_by_practice": {
       "B86024": {
         "fy_to_date": 196,
-        "this_month": 86
+        "this_month": 0
       },
       "C81047": {
         "fy_to_date": 1,
@@ -119,15 +33,15 @@
       },
       "D82054": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "E82014": {
         "fy_to_date": 327,
-        "this_month": 73
+        "this_month": 0
       },
       "E82031": {
         "fy_to_date": 1839,
-        "this_month": 232
+        "this_month": 0
       },
       "E82051": {
         "fy_to_date": 96,
@@ -143,7 +57,7 @@
       },
       "E85096": {
         "fy_to_date": 16,
-        "this_month": 16
+        "this_month": 0
       },
       "E86017": {
         "fy_to_date": 51,
@@ -155,7 +69,7 @@
       },
       "G82224": {
         "fy_to_date": 752,
-        "this_month": 142
+        "this_month": 0
       },
       "G84023": {
         "fy_to_date": 2202,
@@ -175,7 +89,7 @@
       },
       "H85055": {
         "fy_to_date": 3,
-        "this_month": 3
+        "this_month": 0
       },
       "J82058": {
         "fy_to_date": 2,
@@ -183,23 +97,23 @@
       },
       "J82064": {
         "fy_to_date": 380,
-        "this_month": 35
+        "this_month": 0
       },
       "J82067": {
         "fy_to_date": 1107,
-        "this_month": 79
+        "this_month": 0
       },
       "J82074": {
         "fy_to_date": 830,
-        "this_month": 257
+        "this_month": 0
       },
       "J82116": {
         "fy_to_date": 1089,
-        "this_month": 187
+        "this_month": 0
       },
       "J82139": {
         "fy_to_date": 260,
-        "this_month": 260
+        "this_month": 0
       },
       "J82154": {
         "fy_to_date": 127,
@@ -207,11 +121,11 @@
       },
       "J82218": {
         "fy_to_date": 362,
-        "this_month": 24
+        "this_month": 0
       },
       "K81030": {
         "fy_to_date": 1624,
-        "this_month": 1008
+        "this_month": 0
       },
       "L85019": {
         "fy_to_date": 4,
@@ -223,7 +137,7 @@
       },
       "M88006": {
         "fy_to_date": 3172,
-        "this_month": 452
+        "this_month": 0
       },
       "M88015": {
         "fy_to_date": 4,
@@ -247,7 +161,7 @@
       },
       "P92014": {
         "fy_to_date": 93,
-        "this_month": 66
+        "this_month": 0
       },
       "Y01068": {
         "fy_to_date": 1,
@@ -263,7 +177,7 @@
       },
       "Y04925": {
         "fy_to_date": 9,
-        "this_month": 7
+        "this_month": 0
       }
     },
     "by_ods_month": {
@@ -747,17 +661,11 @@
       "2026-07": 1519,
       "2026-08": 1
     },
-    "practices_this_month": [
-      {
-        "name": "Priory View Medical Centre",
-        "count": 1,
-        "ods": "B86024"
-      }
-    ],
+    "practices_this_month": [],
     "fy_by_practice": {
       "B86024": {
         "fy_to_date": 65,
-        "this_month": 1
+        "this_month": 0
       },
       "C84660": {
         "fy_to_date": 148,
@@ -1406,25 +1314,7 @@
     }
   },
   "weekly_available": true,
-  "active_ods_this_month": [
-    "B86024",
-    "D82054",
-    "E82014",
-    "E82031",
-    "E85096",
-    "G82224",
-    "H85055",
-    "J82064",
-    "J82067",
-    "J82074",
-    "J82116",
-    "J82139",
-    "J82218",
-    "K81030",
-    "M88006",
-    "P92014",
-    "Y04925"
-  ],
+  "active_ods_this_month": [],
   "active_ods_recent": [
     "B86024",
     "C81047",
