@@ -1,0 +1,30 @@
+name: Sync DPA-signed deals to Notion Recall Practices
+
+on:
+  # Fired by the HubSpot workflow webhook the moment a deal enters
+  # "DPA Signed Onboard Ready" (POST /repos/.../dispatches, event_type dpa_signed)
+  repository_dispatch:
+    types: [dpa_signed]
+  # Reconciliation safety net: catches anything a webhook missed
+  schedule:
+    - cron: "23 */4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: notion-recall-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Sync to Notion
+        env:
+          HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+        run: python3 pipeline/sync_notion_recall_practices.py
