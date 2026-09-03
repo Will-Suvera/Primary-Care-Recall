@@ -88,3 +88,4 @@ __pycache__/
 # organised under docs/marketing/, but not tracked (they were never in the repo).
 docs/marketing/
 pipeline/.ods_pcn_cache.json
+pipeline/.docusign_key.pem

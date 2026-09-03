@@ -41,8 +41,9 @@ HS_TOKEN = os.environ.get("HUBSPOT_API_TOKEN", "")
 NOTION_TOKEN = os.environ.get("NOTION_API_TOKEN", "")
 
 
-def _request(url, method="GET", body=None, headers=None, retries=3):
-    data = json.dumps(body).encode() if body is not None else None
+def _request(url, method="GET", body=None, headers=None, retries=3, raw_body=None):
+    data = raw_body if raw_body is not None else (
+        json.dumps(body).encode() if body is not None else None)
     for attempt in range(retries):
         req = urllib.request.Request(url, data=data, method=method,
                                      headers={"Content-Type": "application/json", **(headers or {})})
