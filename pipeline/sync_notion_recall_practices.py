@@ -123,6 +123,56 @@ def fetch_stage_deals():
             if tos:
                 deal2company[str(r["from"]["id"])] = str(tos[0]["toObjectId"])
     comp_ids = list(set(deal2company.values()))
+    comp_is_pcn = {}
+    for i in range(0, len(comp_ids), 100):
+        cr = hs("POST", "/crm/v3/objects/companies/batch/read",
+                {"properties": ["ods_unique", "practice_code", "organisation_type"],
+                 "inputs": [{"id": x} for x in comp_ids[i:i + 100]]})
+        for r in cr.get("results", []):
+            pr = r.get("properties", {})
+            ods = (pr.get("ods_unique") or pr.get("practice_code") or "").strip().upper()
+            if ods:
+                comp2ods[str(r["id"])] = ods
+            comp_is_pcn[str(r["id"])] = (pr.get("organisation_type") or "").strip().upper() == "PCN"
+    out = []
+    for d in deals:
+        p = d.get("properties", {})
+        cid = deal2company.get(str(d["id"]), "")
+        out.append({"deal_id": str(d["id"]),
+                    "name": clean_deal_name(p.get("dealname") or ""),
+                    "ehr": (p.get("ehr_type") or "").strip(),
+                    "ods": comp2ods.get(cid, ""),
+                    "is_pcn": comp_is_pcn.get(cid, False)})
+    return out
+
+
+def fetch_pipeline_ods():
+    """ODS codes of every practice with a deal anywhere in the Planner pipeline —
+    used to decide which PCN members count as signed when a PCN-level deal lands."""
+    ids = []
+    # Planner pipeline + Client Success pipeline (signed practices can sit in
+    # either — e.g. a PCN member whose own deal went straight to Client Success)
+    for pipeline in (PIPELINE_ID, "2391616730"):
+        after = None
+        while True:
+            body = {"filterGroups": [{"filters": [
+                        {"propertyName": "pipeline", "operator": "EQ", "value": pipeline}]}],
+                    "limit": 100}
+            if after:
+                body["after"] = after
+            r = hs("POST", "/crm/v3/objects/deals/search", body)
+            ids += [str(d["id"]) for d in r.get("results", [])]
+            after = r.get("paging", {}).get("next", {}).get("after")
+            if not after:
+                break
+    comp_ids = set()
+    for i in range(0, len(ids), 100):
+        assoc = hs("POST", "/crm/v4/associations/deals/companies/batch/read",
+                   {"inputs": [{"id": x} for x in ids[i:i + 100]]})
+        for r in assoc.get("results", []):
+            comp_ids |= {str(t["toObjectId"]) for t in r.get("to", [])}
+    out = set()
+    comp_ids = list(comp_ids)
     for i in range(0, len(comp_ids), 100):
         cr = hs("POST", "/crm/v3/objects/companies/batch/read",
                 {"properties": ["ods_unique", "practice_code"],
@@ -131,15 +181,25 @@ def fetch_stage_deals():
             pr = r.get("properties", {})
             ods = (pr.get("ods_unique") or pr.get("practice_code") or "").strip().upper()
             if ods:
-                comp2ods[str(r["id"])] = ods
-    out = []
-    for d in deals:
-        p = d.get("properties", {})
-        out.append({"deal_id": str(d["id"]),
-                    "name": clean_deal_name(p.get("dealname") or ""),
-                    "ehr": (p.get("ehr_type") or "").strip(),
-                    "ods": comp2ods.get(deal2company.get(str(d["id"]), ""), "")})
+                out.add(ods)
     return out
+
+
+def expand_pcn_deal(deal, enrich, signed):
+    """A PCN-level deal covers whichever member practices have actually signed.
+    Members come from the ODS ePCN data (pcn_name match on the deal/company name);
+    "signed" = on the waitlist/live lists OR holding their own Planner-pipeline deal.
+    Returns per-practice pseudo-deals; empty list means we couldn't expand safely."""
+    n = norm_name(re.sub(r"\bpcn\b", "", deal["name"], flags=re.I))
+    pcn_codes = {p["pcn_code"] for p in enrich.values()
+                 if p.get("pcn_code") and norm_name(re.sub(r"\bpcn\b", "", p.get("pcn_name") or "", flags=re.I)) == n}
+    if len(pcn_codes) != 1:
+        return []
+    code = pcn_codes.pop()
+    members = [(ods, p) for ods, p in enrich.items() if p.get("pcn_code") == code]
+    return [{"deal_id": deal["deal_id"], "name": p["name"].title(), "ehr": deal["ehr"],
+             "ods": ods, "is_pcn": False}
+            for ods, p in members if ods in signed]
 
 
 # ---------- enrichment: ODS -> PCN / ICB ----------
@@ -302,6 +362,28 @@ def main():
 
     enrich, icb_code = load_enrichment()
     signed = load_signed_set()
+
+    # PCN-level deals expand to their signed member practices (one row each);
+    # a PCN we can't safely expand falls through as a single umbrella row.
+    expanded, pipeline_ods = [], None
+    for d in missing:
+        if d["is_pcn"] or (not d["ods"] and re.search(r"\bpcn\b", d["name"], re.I)):
+            if pipeline_ods is None:
+                pipeline_ods = fetch_pipeline_ods()
+            members = expand_pcn_deal(d, enrich, signed | pipeline_ods)
+            if members:
+                print(f"  PCN deal '{d['name']}' -> {len(members)} signed member practice(s)")
+                expanded += members
+                continue
+            print(f"  WARN: couldn't expand PCN deal '{d['name']}' — creating umbrella row")
+        expanded.append(d)
+    missing = [d for d in expanded
+               if not (d["ods"] and d["ods"] in ods_seen)
+               and not name_taken(norm_name(d["name"]), names_seen)]
+    if not missing:
+        print("Nothing to create after PCN expansion.")
+        return
+
     for d in missing:
         if not d["ods"]:
             d["ods"] = resolve_ods_by_name(d["name"], enrich, signed)
