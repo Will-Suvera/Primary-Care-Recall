@@ -628,3 +628,19 @@
 .oh-note.sheet { background: #fbf6ec; border-color: #ecddc2; }
 .oh-note.sheet .oh-note-body { color: var(--sv-text); white-space: pre-wrap; }
 .oh-note.sheet .oh-note-meta { color: #9a7b3e; font-weight: 800; }
+
+/* ---------- Fillout onboarding form ---------- */
+.oh-formbtn {
+  display: inline-flex; align-items: center; gap: 6px; font-family: inherit;
+  font-size: 11px; font-weight: 800; padding: 6px 14px; border-radius: 99px;
+  border: 1px solid var(--sv-purple); background: var(--sv-purple); color: #fff;
+  cursor: pointer; white-space: nowrap;
+}
+.oh-formbtn:hover { filter: brightness(1.12); }
+.oh-formbtn.active { background: var(--sv-card); color: var(--sv-purple); }
+.oh-fillout { background: var(--sv-card); border: 1px solid var(--sv-border); border-radius: 12px; padding: 14px 16px; }
+.oh-fillout-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.oh-fillout-head h3 { margin: 0 0 2px; font-size: 14px; font-weight: 800; color: var(--sv-text); }
+.oh-fillout-head .sub { font-size: 11px; color: var(--sv-muted); }
+.oh-fillout-head .oh-back { margin-left: 0; flex-shrink: 0; }
+.oh-fillout-head .sub.ok { color: var(--sv-green); font-weight: 700; }

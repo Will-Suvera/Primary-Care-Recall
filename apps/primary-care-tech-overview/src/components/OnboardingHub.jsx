@@ -185,6 +185,7 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [confirmLive, setConfirmLive] = useState(null); // deal pending mark-live confirmation
   const [confirmDropped, setConfirmDropped] = useState(null); // deal pending dropped-out confirmation
+  const [showForm, setShowForm] = useState(false); // Fillout onboarding form open (per practice)
   const [slot, setSlot] = useState(null);
   // Home-view filter/search/sort live HERE (not in HubHome) so they survive opening a
   // practice and coming back — HubHome unmounts while a practice detail is shown.
@@ -218,6 +219,7 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  useEffect(() => setShowForm(false), [selected]); // close the form when switching practice / going home
 
   // sidebar nav → scroll to a home section (or, from a sub-page, just return home)
   const goSection = (id) => {
@@ -345,6 +347,9 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
                 </div>
               </div>
               <div className="oh-topbar-acts">
+                <button className={"oh-formbtn" + (showForm ? " active" : "")} onClick={() => setShowForm((v) => !v)}>
+                  {showForm ? "← Back to practice" : "📋 Open Onboarding Form"}
+                </button>
                 {hubspotDealUrl(sel.deal_id) && <a className="oh-hslink" href={hubspotDealUrl(sel.deal_id)} target="_blank" rel="noreferrer"><img className="oh-hs-ico" src="/assets/hubspot-logo.png" alt="" />HubSpot deal ↗</a>}
                 {sel._ready && <button className="oh-mark-live sm" onClick={() => setConfirmLive(sel)}>Mark live</button>}
                 <button className="oh-drop sm" onClick={() => setConfirmDropped(sel)}>Dropped out</button>
@@ -365,7 +370,15 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
         </div>
 
         <div className="oh-scroll">
-          {sel ? (
+          {sel && showForm ? (
+            <FilloutForm deal={sel} onBack={() => setShowForm(false)}
+              onSubmitted={() => {
+                // A completed onboarding form means the call happened and appt
+                // config was captured — tick both, matching the sheet's done values.
+                setStepState(sel, { key: "onboarding_call" }, "done", "Held");
+                setStepState(sel, { key: "appt_config" }, "done", "Uploaded");
+              }} />
+          ) : sel ? (
             <HubDetail key={sel.ods} deal={sel} liveOnb={liveOnb} toggleStep={toggleStep} setStepState={setStepState}
               notes={notes[sel.ods] || []} addNote={addNote} editNote={editNote} deleteNote={deleteNote}
               blocksForOds={blocks?.[sel.ods] || {}} setStepBlock={setStepBlock}
@@ -390,6 +403,58 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
           onConfirm={() => { markDropped(confirmDropped); setConfirmDropped(null); backToHome(); }} />
       )}
     </>
+  );
+}
+
+/* ---------------- Fillout onboarding form ---------------- */
+
+const FILLOUT_ID = "eYpykb1L3qus";
+
+function FilloutForm({ deal, onBack, onSubmitted }) {
+  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => {
+    // The Fillout loader scans the DOM for data-fillout-id divs when it runs,
+    // so it must be (re-)appended after this component's div is mounted.
+    const s = document.createElement("script");
+    s.src = "https://server.fillout.com/embed/v1/";
+    document.body.appendChild(s);
+    return () => { document.body.removeChild(s); };
+  }, []);
+  useEffect(() => {
+    // The embedded form announces completion via postMessage from fillout.com.
+    // Match any submit-shaped payload rather than one exact type string so a
+    // Fillout event rename degrades to "no auto-tick", not a crash.
+    let fired = false;
+    const onMsg = (e) => {
+      if (fired || !String(e.origin).includes("fillout.com")) return;
+      const raw = typeof e.data === "string" ? e.data : JSON.stringify(e.data || {});
+      if (!/submit/i.test(raw)) return;
+      fired = true;
+      setSubmitted(true);
+      onSubmitted?.();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [onSubmitted]);
+  return (
+    <div className="oh-fillout">
+      <div className="oh-fillout-head">
+        <div>
+          <h3>Onboarding form — {deal.name}</h3>
+          {submitted
+            ? <span className="sub ok">✓ Form submitted — Onboarding Call (Held) and Appt Config (Uploaded) ticked in the Hub.</span>
+            : <span className="sub">On submit, Onboarding Call and Appt Config are ticked automatically.</span>}
+        </div>
+        <button className="oh-back" onClick={onBack}>← Back to practice</button>
+      </div>
+      <div
+        style={{ width: "100%", minHeight: 500 }}
+        data-fillout-id={FILLOUT_ID}
+        data-fillout-embed-type="standard"
+        data-fillout-inherit-parameters=""
+        data-fillout-dynamic-resize=""
+      />
+    </div>
   );
 }
 
