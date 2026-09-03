@@ -207,6 +207,15 @@ def _sanitize_rich_text(items):
     return out
 
 
+def _strip_nulls(obj):
+    """Notion rejects explicit nulls in create payloads (e.g. icon: null) — drop them."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(x) for x in obj]
+    return obj
+
+
 def _copy_blocks(block_id, depth=0):
     """Read the template's blocks and rebuild them as creatable payloads."""
     if depth > 3:
@@ -229,7 +238,7 @@ def _copy_blocks(block_id, depth=0):
             payload["rich_text"] = _sanitize_rich_text(payload["rich_text"])
         for drop in ("children",):
             payload.pop(drop, None)
-        node = {"object": "block", "type": btype, btype: payload}
+        node = {"object": "block", "type": btype, btype: _strip_nulls(payload)}
         if b.get("has_children") and btype not in ("synced_block",):
             kids = _copy_blocks(b["id"], depth + 1)
             if kids:
