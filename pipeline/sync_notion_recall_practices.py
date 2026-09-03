@@ -29,6 +29,7 @@ PIPELINE_ID = "3277290730"
 DPA_SIGNED_STAGE = "4489053411"  # "DPA Signed Onboard Ready" (label may be renamed; ID is stable)
 
 NOTION_DB_ID = "506413ec202c433db739971a9f3830d6"          # Recall Practices
+NOTION_MEETINGS_DB_ID = "cb96551db62b4d6f9eaa05f50995e9d7" # Partner Meeting Library
 NOTION_TEMPLATE_PAGE = "39235d377c698070bfb1e87674db422f"  # "New Recall Practice" template
 NOTION_VERSION = "2022-06-28"
 
@@ -341,6 +342,139 @@ def create_practice_page(deal, enrich, icb_code, template_blocks, dry_run):
     print(f"  CREATED: {deal['name']} ({deal['ods'] or 'no ODS'}) -> {page.get('url')}")
 
 
+# ---------- auto-link Partner Meeting Library pages to practice rows ----------
+
+ODS_RE = re.compile(r"\b[A-Z]\d[0-9A-Z]{4,5}\b")
+
+
+def _plain(prop, kind):
+    return "".join(t.get("plain_text", "") for t in (prop or {}).get(kind, []))
+
+
+def fetch_practice_rows():
+    """Recall Practices rows: [{page_id, ods, name, pcn_name, pcn_code, icb}]."""
+    rows, after = [], None
+    while True:
+        body = {"page_size": 100}
+        if after:
+            body["start_cursor"] = after
+        r = notion("POST", f"/databases/{NOTION_DB_ID}/query", body)
+        for pg in r.get("results", []):
+            p = pg.get("properties", {})
+            rows.append({"page_id": pg["id"],
+                         "ods": _plain(p.get("ODS Code"), "rich_text").strip().upper(),
+                         "name": _plain(p.get("Practice Name"), "title").strip(),
+                         "pcn_name": _plain(p.get("PCN"), "rich_text").strip(),
+                         "pcn_code": _plain(p.get("PCN ODS Code"), "rich_text").strip().upper(),
+                         "icb": _plain(p.get("ICB"), "rich_text").strip()})
+        after = r.get("next_cursor")
+        if not r.get("has_more"):
+            break
+    return rows
+
+
+def _strip_prefix(s):
+    return re.sub(r"^\s*(planner demo|suvera demo|suvera support|suvera)\s*[:|]?\s*",
+                  "", s or "", flags=re.I).strip()
+
+
+def _pcn_norm(s):
+    return norm_name(re.sub(r"\bpcn\b|\bprimary care network\b", "", s or "", flags=re.I))
+
+
+def match_meeting_to_rows(title, practice_text, ods_text, rows):
+    """Which practice rows does a meeting cover? Conservative by design — an
+    ambiguous or contradicted match links nothing (prospect meetings dominate
+    the library, and a wrong link is worse than a missing one)."""
+    text = f"{title} | {practice_text} | {ods_text}"
+    # 1. explicit ODS codes anywhere in the text
+    codes = set(ODS_RE.findall(text.upper()))
+    hits = [r for r in rows if r["ods"] and r["ods"] in codes]
+    if hits:
+        return hits, "ods"
+    # 2. practice-name match on text segments; reject if the text names a
+    #    different ICB than the row's (e.g. "Riverside Surgery (Cheshire...)"
+    #    must not link the Sussex "Riverside Medical Practice" row)
+    segs = [_strip_prefix(s) for s in re.split(r"[—–(),;/|]+|\s+-\s+", text) if s.strip()]
+    cand = {r["page_id"]: r for s in segs if norm_name(s)
+            for r in rows if norm_name(r["name"]) == norm_name(s)}
+    if len(cand) == 1:
+        row = next(iter(cand.values()))
+        icb_mention = re.search(r"\b(NHS\s+)?([A-Za-z&,' ]+?)\s+ICB\b", text)
+        if icb_mention and row["icb"]:
+            if norm_name(icb_mention.group(2)) not in norm_name(row["icb"]):
+                return [], "icb-mismatch"
+        return [row], "name"
+    if len(cand) > 1:
+        return [], "ambiguous"
+    # 3. PCN-level meeting -> every row in that PCN. Only when the meeting's
+    #    SUBJECT (leading segment of the title or practice field) is the PCN
+    #    itself — a practice meeting that merely mentions its PCN in brackets
+    #    ("Lyndhurst Surgery (New Forest PCN)") must not fire this rule.
+    subjects = [re.split(r"[—–(]|\s+-\s+", _strip_prefix(s))[0].strip()
+                for s in (title, practice_text) if s]
+    for subj in subjects:
+        if not re.search(r"\bpcn\b|\bprimary care network\b", subj, re.I):
+            continue
+        n = _pcn_norm(subj)
+        pcns = {r["pcn_code"] for r in rows if r["pcn_code"] and _pcn_norm(r["pcn_name"]) == n}
+        if len(pcns) == 1:
+            return [r for r in rows if r["pcn_code"] in pcns], "pcn"
+    return [], "none"
+
+
+def link_meetings(rows, enrich, icb_code, dry_run):
+    """Link unlinked meeting pages to their practice rows (dual relation fills
+    "Partner Calls" on the practice side); also fill blank ODS columns on the
+    meeting when a single practice matched."""
+    meetings, after = [], None
+    while True:
+        body = {"page_size": 100}
+        if after:
+            body["start_cursor"] = after
+        r = notion("POST", f"/databases/{NOTION_MEETINGS_DB_ID}/query", body)
+        meetings += r.get("results", [])
+        after = r.get("next_cursor")
+        if not r.get("has_more"):
+            break
+    linked = 0
+    for m in meetings:
+        p = m.get("properties", {})
+        if (p.get("Recall Practice") or {}).get("relation"):
+            continue  # already linked — never overwrite
+        hits, how = match_meeting_to_rows(_plain(p.get("Meeting"), "title"),
+                                          _plain(p.get("Practice"), "rich_text"),
+                                          _plain(p.get("ODS Code"), "rich_text"), rows)
+        if not hits:
+            continue
+        title = _plain(p.get("Meeting"), "title")[:60]
+        if dry_run:
+            print(f"  DRY RUN would link ({how}): '{title}' -> {[r['name'] for r in hits]}")
+            linked += 1
+            continue
+        props = {"Recall Practice": {"relation": [{"id": r["page_id"]} for r in hits]}}
+        if not _plain(p.get("ODS Code"), "rich_text").strip():
+            def rt(v):
+                return {"rich_text": [{"type": "text", "text": {"content": v}}]} if v else {"rich_text": []}
+            ods_list = [r["ods"] for r in hits if r["ods"]]
+            props["ODS Code"] = rt(", ".join(ods_list))
+            if len(hits) == 1 and hits[0]["ods"] in enrich:
+                g = enrich[hits[0]["ods"]]
+                icb = g.get("icb") or ""
+                props["PCN"] = rt(g.get("pcn_name") or "")
+                props["PCN ODS Code"] = rt(g.get("pcn_code") or "")
+                props["ICB"] = rt(icb)
+                props["ICB ODS Code"] = rt(icb_code.get(re.sub(r"\s+", " ", icb.upper()).strip(), ""))
+            elif hits and all(r["pcn_code"] == hits[0]["pcn_code"] for r in hits):
+                props["PCN"] = rt(hits[0]["pcn_name"])
+                props["PCN ODS Code"] = rt(hits[0]["pcn_code"])
+        notion("PATCH", f"/pages/{m['id']}", {"properties": props})
+        print(f"  LINKED ({how}): '{title}' -> {[r['name'] for r in hits]}")
+        linked += 1
+    if not linked:
+        print("No new meeting links.")
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
     if not HS_TOKEN:
@@ -352,15 +486,16 @@ def main():
     print(f"{len(deals)} deals in DPA Signed Onboard Ready")
     ods_seen, names_seen = fetch_existing_rows()
     print(f"{len(ods_seen)} ODS codes / {len(names_seen)} names already in Notion")
+    enrich, icb_code = load_enrichment()
 
     missing = [d for d in deals
                if not (d["ods"] and d["ods"] in ods_seen)
                and not name_taken(norm_name(d["name"]), names_seen)]
     if not missing:
         print("Nothing to create — Notion is in sync.")
+        link_meetings(fetch_practice_rows(), enrich, icb_code, dry_run)
         return
 
-    enrich, icb_code = load_enrichment()
     signed = load_signed_set()
 
     # PCN-level deals expand to their signed member practices (one row each);
@@ -382,18 +517,19 @@ def main():
                and not name_taken(norm_name(d["name"]), names_seen)]
     if not missing:
         print("Nothing to create after PCN expansion.")
-        return
+    else:
+        for d in missing:
+            if not d["ods"]:
+                d["ods"] = resolve_ods_by_name(d["name"], enrich, signed)
+        template_blocks = [] if dry_run else _copy_blocks(NOTION_TEMPLATE_PAGE)
+        if not dry_run:
+            print(f"template: {len(template_blocks)} top-level blocks copied")
+        for d in missing:
+            create_practice_page(d, enrich, icb_code, template_blocks, dry_run)
+            names_seen.add(norm_name(d["name"]))  # guard against duplicate dealnames in one run
+        print(f"Done — {len(missing)} practice(s) {'would be' if dry_run else ''} created.")
 
-    for d in missing:
-        if not d["ods"]:
-            d["ods"] = resolve_ods_by_name(d["name"], enrich, signed)
-    template_blocks = [] if dry_run else _copy_blocks(NOTION_TEMPLATE_PAGE)
-    if not dry_run:
-        print(f"template: {len(template_blocks)} top-level blocks copied")
-    for d in missing:
-        create_practice_page(d, enrich, icb_code, template_blocks, dry_run)
-        names_seen.add(norm_name(d["name"]))  # guard against duplicate dealnames in one run
-    print(f"Done — {len(missing)} practice(s) {'would be' if dry_run else ''} created.")
+    link_meetings(fetch_practice_rows(), enrich, icb_code, dry_run)
 
 
 if __name__ == "__main__":
