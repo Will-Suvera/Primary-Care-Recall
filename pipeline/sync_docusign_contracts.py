@@ -167,14 +167,19 @@ def _multipart(fields, file_field, filename, content, ctype="application/pdf"):
 
 
 def hubspot_has_file(name):
+    """Deterministic existence check by path — the files SEARCH index lags
+    uploads by minutes and must never gate dedupe."""
     try:
-        r = hs("GET", f"/files/v3/files/search?name={name}")
+        hs("GET", f"/files/v3/files/stat/contracts/{name}")
+        return True
     except RuntimeError as e:
-        if "MISSING_SCOPES" in str(e):
+        msg = str(e)
+        if "MISSING_SCOPES" in msg:
             print("  WARN: HubSpot token lacks the Files scope — can't check/upload files")
             return False
+        if "-> 404" in msg:
+            return False
         raise
-    return any(f.get("name") == name for f in r.get("results", []))
 
 
 def hubspot_attach(pdf, envelope_id, parsed, covered, dry_run):
