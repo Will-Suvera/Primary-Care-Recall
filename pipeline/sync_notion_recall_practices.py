@@ -373,54 +373,20 @@ def fetch_practice_rows():
     return rows
 
 
-def _strip_prefix(s):
-    return re.sub(r"^\s*(planner demo|suvera demo|suvera support|suvera)\s*[:|]?\s*",
-                  "", s or "", flags=re.I).strip()
-
-
-def _pcn_norm(s):
-    return norm_name(re.sub(r"\bpcn\b|\bprimary care network\b", "", s or "", flags=re.I))
-
-
 def match_meeting_to_rows(title, practice_text, ods_text, rows):
-    """Which practice rows does a meeting cover? Conservative by design — an
-    ambiguous or contradicted match links nothing (prospect meetings dominate
-    the library, and a wrong link is worse than a missing one)."""
-    text = f"{title} | {practice_text} | {ods_text}"
-    # 1. explicit ODS codes anywhere in the text
-    codes = set(ODS_RE.findall(text.upper()))
-    hits = [r for r in rows if r["ods"] and r["ods"] in codes]
-    if hits:
-        return hits, "ods"
-    # 2. practice-name match on text segments; reject if the text names a
-    #    different ICB than the row's (e.g. "Riverside Surgery (Cheshire...)"
-    #    must not link the Sussex "Riverside Medical Practice" row)
-    segs = [_strip_prefix(s) for s in re.split(r"[—–(),;/|]+|\s+-\s+", text) if s.strip()]
-    cand = {r["page_id"]: r for s in segs if norm_name(s)
-            for r in rows if norm_name(r["name"]) == norm_name(s)}
-    if len(cand) == 1:
-        row = next(iter(cand.values()))
-        icb_mention = re.search(r"\b(NHS\s+)?([A-Za-z&,' ]+?)\s+ICB\b", text)
-        if icb_mention and row["icb"]:
-            if norm_name(icb_mention.group(2)) not in norm_name(row["icb"]):
-                return [], "icb-mismatch"
-        return [row], "name"
-    if len(cand) > 1:
-        return [], "ambiguous"
-    # 3. PCN-level meeting -> every row in that PCN. Only when the meeting's
-    #    SUBJECT (leading segment of the title or practice field) is the PCN
-    #    itself — a practice meeting that merely mentions its PCN in brackets
-    #    ("Lyndhurst Surgery (New Forest PCN)") must not fire this rule.
-    subjects = [re.split(r"[—–(]|\s+-\s+", _strip_prefix(s))[0].strip()
-                for s in (title, practice_text) if s]
-    for subj in subjects:
-        if not re.search(r"\bpcn\b|\bprimary care network\b", subj, re.I):
-            continue
-        n = _pcn_norm(subj)
-        pcns = {r["pcn_code"] for r in rows if r["pcn_code"] and _pcn_norm(r["pcn_name"]) == n}
-        if len(pcns) == 1:
-            return [r for r in rows if r["pcn_code"] in pcns], "pcn"
-    return [], "none"
+    """Which practice rows does a meeting cover? ODS CODES ONLY (Will,
+    2026-09-03): name/PCN-name matching is liable to mistakes, so a meeting
+    links exclusively on codes found in its title / Practice / ODS fields —
+    a practice ODS links that row; a PCN's U-code links every member row.
+    No code, no link: the team links those by hand (or adds the code)."""
+    codes = set(ODS_RE.findall(f"{title} {practice_text} {ods_text}".upper()))
+    if not codes:
+        return [], "no-code"
+    hits = {r["page_id"]: r for r in rows if r["ods"] and r["ods"] in codes}
+    for r in rows:  # PCN U-codes cover all member practices
+        if r["pcn_code"] and r["pcn_code"] in codes:
+            hits[r["page_id"]] = r
+    return list(hits.values()), ("ods" if hits else "code-unknown")
 
 
 def link_meetings(rows, enrich, icb_code, dry_run):
@@ -442,9 +408,11 @@ def link_meetings(rows, enrich, icb_code, dry_run):
         p = m.get("properties", {})
         if (p.get("Recall Practice") or {}).get("relation"):
             continue  # already linked — never overwrite
+        codes_text = " ".join([_plain(p.get("ODS Code"), "rich_text"),
+                               _plain(p.get("PCN ODS Code"), "rich_text")])
         hits, how = match_meeting_to_rows(_plain(p.get("Meeting"), "title"),
                                           _plain(p.get("Practice"), "rich_text"),
-                                          _plain(p.get("ODS Code"), "rich_text"), rows)
+                                          codes_text, rows)
         if not hits:
             continue
         title = _plain(p.get("Meeting"), "title")[:60]
