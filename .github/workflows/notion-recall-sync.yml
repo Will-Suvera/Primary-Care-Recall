@@ -29,3 +29,14 @@ jobs:
           HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
         run: python3 pipeline/sync_notion_recall_practices.py
+      - name: Import signed DocuSign contracts
+        env:
+          HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          DOCUSIGN_INTEGRATION_KEY: ${{ secrets.DOCUSIGN_INTEGRATION_KEY }}
+          DOCUSIGN_USER_ID: ${{ secrets.DOCUSIGN_USER_ID }}
+          DOCUSIGN_PRIVATE_KEY: ${{ secrets.DOCUSIGN_PRIVATE_KEY }}
+          DOCUSIGN_AUTH_SERVER: ${{ secrets.DOCUSIGN_AUTH_SERVER }}
+        run: |
+          pip install -q cryptography pypdf
+          python3 pipeline/sync_docusign_contracts.py
