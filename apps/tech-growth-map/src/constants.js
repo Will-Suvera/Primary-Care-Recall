@@ -28,7 +28,7 @@ const FLOW = {
 
 export const MARKER_STYLES = {
   // Paid (Gold tier) — the headline: brand fill with a heavy ink ring.
-  paid: { color: FLOW.ink, fillColor: FLOW.brand, radius: 9, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
+  paid: { color: FLOW.ink, fillColor: FLOW.brand, radius: 12, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
   // Live — the brand colour, because it is the thing we sell.
   fullPlanner: { color: FLOW.brandDeep, fillColor: FLOW.brand, radius: 6.5, fillOpacity: 0.95, weight: 1.2, opacity: 0.95 },
   // Onboarding — warm amber.

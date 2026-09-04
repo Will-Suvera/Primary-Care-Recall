@@ -239,7 +239,7 @@ html.tv .has-tooltip::after { display: none; }
 .legend-dot.live { background: var(--su-cat-live); }
 .legend-dot.in-progress { background: var(--su-cat-onboarding); }
 .legend-dot.full-planner { background: var(--su-cat-live); }
-.legend-dot.paid { background: var(--su-cat-live); border: 2px solid var(--su-cat-paid-ring); width: .75rem; height: .75rem; }
+.legend-dot.paid { background: var(--su-cat-live); border: 2px solid var(--su-cat-paid-ring); width: 1rem; height: 1rem; }
 
 /* ---- Map ---- */
 .map-container { flex: 1; position: relative; }
