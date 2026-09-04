@@ -1,0 +1,94 @@
+/* ============================================================================
+   Suvera Flow — shared design tokens for internal dashboards.
+   Source of truth: docs/design/suvera-flow.md. Copy this file verbatim into
+   each app as src/suvera-flow.css and import it first. Do not fork values.
+   ============================================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- The one accent ---- */
+  --su-brand: #482190;
+  --su-brand-ink: #FFFFFF;                 /* text on brand */
+  --su-brand-tint: rgba(72, 33, 144, .10); /* focus ring halo, hover on brand-outline buttons */
+  --su-brand-muted: #EEECFF; /* small chips ≤32px only, never a large fill */
+  --su-brand-deep: #2E1560;                /* TV-mode header ground, hover on brand buttons */
+
+  /* ---- Warm neutrals (hue ~85, low chroma) ---- */
+  --su-paper: #FBFAF8;      /* page */
+  --su-card: #FFFFFF;       /* panels, cards */
+  --su-surface: #F5F3F0;    /* wells, chips, table header bands, hover */
+  --su-line: #E2E1DE;       /* hairlines, borders */
+  --su-ink: #0E0D0B;        /* headings, primary numbers */
+  --su-text: #2B2926;       /* body text */
+  --su-muted: #54524F;      /* secondary text (AAA on paper) */
+  --su-faint: #8A8579;      /* eyebrows, captions, disabled */
+
+  /* ---- Semantic status (meaning only, never decoration) ---- */
+  --su-good: #2C522D;                 --su-good-bg: #E7F2E7;  --su-good-line: #BED5BE;
+  --su-warn: #7F4413;     --su-warn-bg: #FEEADB;    --su-warn-line: #EDC5A8;
+  --su-bad:  #932B2A;                 --su-bad-bg:  #FCEAE8;    --su-bad-line:  #F3BFBA;
+
+  /* ---- Categorical data colours (map tiers, chart series). Ordered, CVD-safe. ---- */
+  --su-cat-live: #482190;        /* Live — the brand, because it is the thing we sell */
+  --su-cat-onboarding: #C4813A;  /* warm amber */
+  --su-cat-signed: #5E8C7A;      /* sage */
+  --su-cat-none: #D8D4CC;        /* not in pipeline — quiet */
+  --su-cat-paid-ring: #0E0D0B;   /* outline for paying practices */
+  --su-series-1: #482190; --su-series-2: #C4813A; --su-series-3: #5E8C7A; --su-series-4: #8A8579; --su-series-5: #B9A9DC;
+
+  /* ---- The single approved gradient: one hero surface per app, nowhere else ---- */
+  --su-hero-grad: linear-gradient(135deg, #EAE6F4 0%, #EFE9F8 35%, #F4EDF4 60%, #F8F0E8 100%);
+
+  /* ---- Shape ---- */
+  --su-r-card: 14px; --su-r-input: 8px; --su-r-chip: 6px; --su-r-pop: 12px;
+  --su-shadow-btn: 0 1px 2px rgba(14, 13, 11, .12);
+  --su-shadow-pop: 0 12px 32px -18px rgba(14, 13, 11, .38);
+
+  /* ---- Type ---- */
+  --su-serif: 'Bitter', Georgia, 'Times New Roman', serif;
+  --su-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --su-fs-h1: 32px; --su-fs-h2: 19px; --su-fs-body: 15px; --su-fs-small: 13px; --su-fs-eyebrow: 10.5px;
+  --su-scale: 1; /* TV mode multiplies type + spacing; see suvera-flow.md */
+}
+
+/* ---- Base ---- */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--su-paper); color: var(--su-text);
+  font-family: var(--su-font); font-size: var(--su-fs-body); line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: var(--su-serif); font-weight: 500; color: var(--su-ink); margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h1 { font-size: var(--su-fs-h1); line-height: 1.15; }
+h2 { font-size: var(--su-fs-h2); line-height: 1.3; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--su-brand); outline-offset: 2px; border-radius: 4px; }
+
+/* ---- Primitives every app should use ---- */
+.su-eyebrow { font-size: var(--su-fs-eyebrow); letter-spacing: .09em; text-transform: uppercase; color: var(--su-faint); font-weight: 700; margin: 0; }
+.su-panel { background: var(--su-card); border: 1px solid var(--su-line); border-radius: var(--su-r-card); padding: 28px 30px; }
+.su-well { background: var(--su-surface); border-radius: 10px; padding: 14px 16px; color: var(--su-muted); }
+.su-num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+.su-kpi { font-family: var(--su-serif); font-weight: 500; color: var(--su-ink); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.su-chip { display: inline-flex; align-items: center; gap: 7px; background: var(--su-surface); color: var(--su-ink); border-radius: var(--su-r-chip); padding: 4px 9px; font-size: 12.5px; font-weight: 500; }
+.su-status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 9px; font-size: 11.5px; font-weight: 600; border: 1px solid transparent; }
+.su-status.good { background: var(--su-good-bg); color: var(--su-good); border-color: var(--su-good-line); }
+.su-status.warn { background: var(--su-warn-bg); color: var(--su-warn); border-color: var(--su-warn-line); }
+.su-status.bad  { background: var(--su-bad-bg);  color: var(--su-bad);  border-color: var(--su-bad-line); }
+.su-btn { display: inline-flex; align-items: center; gap: 8px; background: var(--su-brand); color: var(--su-brand-ink); border: 1px solid var(--su-brand); border-radius: var(--su-r-input); padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: var(--su-shadow-btn); }
+.su-btn:hover { background: var(--su-brand-deep); border-color: var(--su-brand-deep); }
+.su-btn.secondary { background: var(--su-card); color: var(--su-ink); border-color: var(--su-line); box-shadow: none; }
+.su-btn.secondary:hover { background: var(--su-surface); }
+.su-btn:disabled { opacity: .6; cursor: default; }
+.su-input { background: var(--su-card); border: 1px solid var(--su-line); border-radius: var(--su-r-input); color: var(--su-ink); padding: 11px 13px; font-size: 14px; font-weight: 500; width: 100%; }
+.su-input::placeholder { color: var(--su-faint); }
+.su-input:focus { outline: none; border-color: var(--su-brand); box-shadow: 0 0 0 3px var(--su-brand-tint); }
+.su-table { border-collapse: collapse; width: 100%; }
+.su-table th { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--su-faint); font-weight: 700; text-align: left; padding: 10px 8px 12px; border-bottom: 1px solid var(--su-line); }
+.su-table td { padding: 12px 8px; border-bottom: 1px solid var(--su-line); font-size: 13.5px; color: var(--su-muted); font-variant-numeric: tabular-nums; }
+.su-table td.ink { color: var(--su-ink); font-weight: 600; }
+.su-pop { background: var(--su-card); border: 1px solid var(--su-line); border-radius: var(--su-r-pop); box-shadow: var(--su-shadow-pop); }
+.su-hairline { border: 0; border-top: 1px solid var(--su-line); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

@@ -111,7 +111,6 @@ export default function BottomStrip({ recalls }) {
       {/* Biggest Mover */}
       <div className="bs-section">
         <div className="bs-header">
-          <span className="bs-trophy">🏆</span>
           <span className="bs-title">Biggest Mover</span>
           {topMovers.length > 0 && <span className="bs-rank">#{moverIdx + 1} of {topMovers.length}</span>}
         </div>
