@@ -348,7 +348,7 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
               </div>
               <div className="oh-topbar-acts">
                 <button className={"oh-formbtn" + (showForm ? " active" : "")} onClick={() => setShowForm((v) => !v)}>
-                  {showForm ? "← Back to practice" : "📋 Open Onboarding Form"}
+                  {showForm ? "← Back to practice" : "Open Onboarding Form"}
                 </button>
                 {hubspotDealUrl(sel.deal_id) && <a className="oh-hslink" href={hubspotDealUrl(sel.deal_id)} target="_blank" rel="noreferrer"><img className="oh-hs-ico" src="/assets/hubspot-logo.png" alt="" />HubSpot deal ↗</a>}
                 {sel._ready && <button className="oh-mark-live sm" onClick={() => setConfirmLive(sel)}>Mark live</button>}
@@ -1079,7 +1079,7 @@ function HubDetail({ deal, liveOnb, toggleStep, setStepState, notes, addNote, ed
           ))}
         {deal.sheet_notes && (
           <div className="oh-activity-sheet">
-            <div className="oh-activity-sheet-hdr">📋 From onboarding sheet · read-only (no timestamp)</div>
+            <div className="oh-activity-sheet-hdr">From onboarding sheet · read-only (no timestamp)</div>
             <div className="oh-activity-sheet-body">{deal.sheet_notes}</div>
           </div>
         )}

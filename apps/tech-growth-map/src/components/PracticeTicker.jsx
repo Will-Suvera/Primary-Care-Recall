@@ -84,7 +84,7 @@ export default function PracticeTicker({ practices, timelineData }) {
       <div className="ticker-track" style={{ animationDuration: `${Math.max(display.length * 3, 60)}s` }}>
         {display.map((item, i) => (
           <span className="ticker-item" key={i}>
-            {item.status === 'live' ? <span className="ticker-emoji">🔥</span> : <span className={`ticker-dot ${item.status}`} />}
+            <span className={`ticker-dot ${item.status}`} />
             <span className="ticker-name">{item.name}</span>
             <span className={`ticker-label ${item.status}`}>{item.label} {item.date}</span>
           </span>

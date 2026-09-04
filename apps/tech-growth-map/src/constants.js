@@ -13,19 +13,34 @@ export const MAP_ZOOM = 6
 
 export const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 
+// Marker + boundary colours are the Suvera Flow categorical set
+// (docs/design/suvera-flow.md → --su-cat-*). Leaflet paints SVG attributes, so
+// the hex values are repeated here rather than read from CSS variables.
+const FLOW = {
+  brand: '#482190',      // --su-cat-live
+  brandDeep: '#2E1560',
+  ink: '#0E0D0B',        // --su-cat-paid-ring
+  amber: '#C4813A',      // --su-cat-onboarding
+  sage: '#5E8C7A',       // --su-cat-signed
+  none: '#D8D4CC',       // --su-cat-none
+  faint: '#8A8579',
+}
+
 export const MARKER_STYLES = {
-  // Gold tier (paying customers) — the headline: big, bright, dark ring.
-  // Every other tier is deliberately muted so the gold reads first.
-  paid: { color: '#78350f', fillColor: '#f5b301', radius: 10, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
-  fullPlanner: { color: '#238b50', fillColor: '#5fdd94', radius: 6.5, fillOpacity: 0.95, weight: 1.8, opacity: 0.95 },
-  inProgress: { color: '#5b8def', fillColor: '#a8c8fa', radius: 4, fillOpacity: 0.7, weight: 1, opacity: 0.7 },
-  // Signed-up: small purple dots (amber clashed with the gold paid markers)
-  waitlist: { color: '#8863cc', fillColor: '#b295e6', radius: 4.2, fillOpacity: 0.72, weight: 1.2, opacity: 0.72 },
-  notSigned: { color: '#d7defc', fillColor: '#c3cdf7', radius: 3, fillOpacity: 0.42, weight: 0.3, opacity: 0.5 },
+  // Paid (Gold tier) — the headline: brand fill with a heavy ink ring.
+  paid: { color: FLOW.ink, fillColor: FLOW.brand, radius: 12, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
+  // Live — the brand colour, because it is the thing we sell.
+  fullPlanner: { color: FLOW.brandDeep, fillColor: FLOW.brand, radius: 6.5, fillOpacity: 0.95, weight: 1.2, opacity: 0.95 },
+  // Onboarding — warm amber.
+  inProgress: { color: FLOW.amber, fillColor: FLOW.amber, radius: 4.5, fillOpacity: 0.8, weight: 1, opacity: 0.9 },
+  // Signed-up — sage.
+  waitlist: { color: FLOW.sage, fillColor: FLOW.sage, radius: 4.2, fillOpacity: 0.75, weight: 1, opacity: 0.85 },
+  // Not in the pipeline — quiet.
+  notSigned: { color: FLOW.none, fillColor: FLOW.none, radius: 3, fillOpacity: 0.55, weight: 0.3, opacity: 0.6 },
 }
 
 export const ICB_STYLES = {
-  default: { color: '#3f2e5e', weight: 1.2, fillColor: 'rgba(63,46,94,0.04)', fillOpacity: 1 },
-  hover: { color: '#3f2e5e', weight: 2, fillColor: 'rgba(63,46,94,0.1)', fillOpacity: 1 },
-  active: { color: '#3f2e5e', weight: 2.5, fillColor: 'rgba(63,46,94,0.18)', fillOpacity: 1 },
+  default: { color: FLOW.faint, weight: 1, fillColor: 'rgba(72,33,144,0.03)', fillOpacity: 1 },
+  hover: { color: FLOW.brand, weight: 1.6, fillColor: 'rgba(72,33,144,0.08)', fillOpacity: 1 },
+  active: { color: FLOW.brand, weight: 2.2, fillColor: 'rgba(72,33,144,0.14)', fillOpacity: 1 },
 }

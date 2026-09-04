@@ -15,7 +15,7 @@ function formatAge(ms) {
   return `${h}h ${rm}m ago`
 }
 
-export default function TopBar({ timeline }) {
+export default function TopBar({ timeline, tv = false, onToggleTv }) {
   const [now, setNow] = useState(Date.now())
 
   // Tick every second for live age display
@@ -49,19 +49,32 @@ export default function TopBar({ timeline }) {
   return (
     <div className="top-bar">
       <div className="logo-section">
-        <img src={`${import.meta.env.BASE_URL}assets/suvera-logo-light.png`} alt="Suvera" />
+        <img src={`${import.meta.env.BASE_URL}assets/${tv ? 'suvera-logo-light.png' : 'suvera-logo.png'}`} alt="Suvera" />
         <div className="title-group">
           <h1>Suvera Patient Growth In UK</h1>
           <div className="subtitle">England - Technology Led Growth</div>
         </div>
       </div>
-      <div className={`live-badge${stale ? ' stale' : ''}`}>
-        <div className="dot"></div>
-        <span>
-          Last updated: <span className={stale ? 'stale' : ''}>
-            {stale ? `${ageText} — STALE` : ageText}
+      <div className="top-actions">
+        <div className={`live-badge${stale ? ' stale' : ''}`}>
+          <div className="dot"></div>
+          <span>
+            Last updated: <span className={stale ? 'stale' : ''}>
+              {stale ? `${ageText} — stale` : ageText}
+            </span>
           </span>
-        </span>
+        </div>
+        {onToggleTv && (
+          <button
+            type="button"
+            className={`tv-toggle${tv ? ' on' : ''}`}
+            onClick={onToggleTv}
+            aria-pressed={tv}
+            title="Toggle TV mode (t)"
+          >
+            TV {tv ? 'on' : 'off'}
+          </button>
+        )}
       </div>
     </div>
   )

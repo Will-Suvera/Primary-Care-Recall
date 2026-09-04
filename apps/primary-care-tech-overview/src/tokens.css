@@ -1,82 +1,67 @@
 /* ============================================================
-   Suvera Dashboard — Design Tokens
-   Source of truth for the "Aurora" dashboard look & feel.
-   Import once at the app root, then use the var(--*) names below.
-   Font: Hanken Grotesk (Google Fonts) — weights 400/500/600/700/800.
+   Recalls Overview — design tokens.
+   The values come from the shared Suvera Flow system
+   (src/suvera-flow.css, source of truth: docs/design/suvera-flow.md).
+   This file only keeps the legacy "Aurora" names alive by pointing
+   them at Flow tokens, so every existing var(--su-*) usage recolours
+   without renaming. Do not add values here that fight the Flow set.
    ============================================================ */
+@import "./suvera-flow.css";
 
 :root {
-  /* ---- Brand ---- */
-  --su-purple-900: #4B3382;   /* deepest brand purple */
-  --su-purple-700: #5B3E97;   /* primary purple (active nav, links) */
-  --su-purple-600: #6E4FA3;
-  --su-purple-500: #7E5BAE;
-  --su-purple-400: #8E6BB5;
-  --su-lilac-400:  #9A6FB8;
-  --su-lilac-300:  #B07BAB;
-  --su-lilac-200:  #C7AEDD;   /* faint accents, arrows, dots */
-  --su-peach-400:  #E3A06F;   /* warm gradient terminus */
-  --su-peach-300:  #E3A878;
+  /* ---- Brand ramp → one accent ---- */
+  --su-purple-900: var(--su-brand-deep);
+  --su-purple-700: var(--su-brand);
+  --su-purple-600: var(--su-brand);
+  --su-purple-500: var(--su-brand);
+  --su-purple-400: var(--su-brand);
+  --su-lilac-400:  var(--su-series-5);
+  --su-lilac-300:  var(--su-series-5);
+  --su-lilac-200:  var(--su-series-5);   /* faint accents, secondary bars */
+  --su-peach-400:  var(--su-cat-onboarding);
+  --su-peach-300:  var(--su-cat-onboarding);
 
-  /* ---- Ink / text ---- */
-  --su-ink:        #2E2147;   /* headings, big numbers */
-  --su-ink-2:      #3F2E5E;   /* table cell emphasis, wordmark */
-  --su-text:       #5B5470;   /* body / values */
-  --su-text-2:     #6B6480;   /* secondary */
-  --su-muted:      #857E97;   /* meta, descriptions */
-  --su-faint:      #A8A2B8;   /* labels, placeholders, em-dashes */
+  /* ---- Ink / text (Flow already defines --su-ink, --su-text, --su-muted, --su-faint) ---- */
+  --su-ink-2:      var(--su-ink);
+  --su-text-2:     var(--su-muted);
 
   /* ---- Surfaces & lines ---- */
-  --su-well:       #F5F1FA;   /* bar tracks / inset wells */
-  --su-bar-track:  #F5F1FA;   /* funnel bar track (Flow 2) — alias of --su-well */
-  --su-tint:       #FAF7FD;   /* subtle row / total emphasis */
-  --su-tint-2:     #F4F0FA;   /* chip fill, toggle track */
-  --su-hairline:   rgba(120,90,160,0.15);  /* section + KPI dividers */
-  --su-row-line:   #F4F0FA;   /* table / card row separators */
+  --su-well:       var(--su-surface);
+  --su-bar-track:  var(--su-surface);
+  --su-tint:       var(--su-surface);
+  --su-tint-2:     var(--su-surface);
+  --su-hairline:   var(--su-line);
+  --su-row-line:   var(--su-line);
+  --su-card-line:  var(--su-line);
+  --su-input-line: var(--su-line);
+  --su-hover:      var(--su-surface);
+  --su-count-chip: rgba(255, 255, 255, 0.22);   /* count badge inside a brand bar */
+  --su-peach-soft: var(--su-ink);
 
-  /* ---- Card surfaces (Flow 2 boxed cards) ---- */
-  --su-card:       #FFFFFF;   /* every Flow 2 card surface */
-  --su-card-line:  #EFEAF6;   /* card border (1px) */
-  --su-input-line: #ECE7F3;   /* search field border */
-  --su-hover:      rgba(120,90,160,0.06);  /* row / bar hover wash */
-  --su-count-chip: rgba(255,255,255,0.22); /* count badge inside a funnel bar */
-  --su-peach-soft: #FBE6CE;   /* peach text ON the hero gradient */
+  /* On the (now pale) hero gradient: ink text, brand-tint chips */
+  --su-on-hero:    var(--su-muted);
+  --su-on-hero-2:  var(--su-muted);
+  --su-hero-chip:  var(--su-brand-tint);
 
-  /* On the hero gradient: white text + translucent chips */
-  --su-on-hero:    rgba(255,255,255,0.85);
-  --su-on-hero-2:  rgba(255,255,255,0.82);
-  --su-hero-chip:  rgba(255,255,255,0.18);
+  /* ---- Gradients collapsed to flat accent; --su-hero-grad is Flow's, the one allowed ---- */
+  --su-page-bg:    var(--su-paper);
+  --su-brand-grad: var(--su-brand);
+  --su-bottleneck: var(--su-bad);
+  --su-nav-grad:   var(--su-brand);
+  --su-bar-grad:   var(--su-brand);
 
-  /* ---- Page & hero gradients ---- */
-  --su-page-bg:    linear-gradient(150deg,#F7EBE0 0%,#FBF9FD 40%,#EFE9F8 100%);
-  --su-brand-grad: linear-gradient(120deg,#4B3382 0%,#6E4FA3 42%,#B07BAB 72%,#E3A06F 100%);
-  --su-hero-grad:  linear-gradient(140deg,#4B3382,#6E4FA3 46%,#B07BAB 78%,#E3A06F);
-  --su-bottleneck: linear-gradient(135deg,#B2452F,#C9613B);  /* the one "problem" bar */
-  --su-nav-grad:   linear-gradient(135deg,#5B3E97,#7E5BAE 55%,#C98FA0);
-  --su-bar-grad:   linear-gradient(135deg,#5B3E97,#7E5BAE 55%,#9A6FB8);
-
-  /* ---- Status (muted, never saturated) ---- */
-  --su-good:       #1C7A57;  --su-good-bg: #E2F2EA;
-  --su-bad:        #C23B2A;  --su-bad-bg:  #FBE7E3;
-  --su-warn:       #A9791F;  --su-warn-bg: #F7EDD6;
-  --su-neutral:    #7A7490;  --su-neutral-bg: #F1EEF7;
+  /* ---- Status (Flow defines --su-good/-bg, --su-bad/-bg, --su-warn/-bg) ---- */
+  --su-neutral:    var(--su-muted);
+  --su-neutral-bg: var(--su-surface);
 
   /* ---- Radii ---- */
   --su-r-pill: 999px;
-  --su-r-lg:   22px;   /* hero block */
-  --su-r-md:   16px;   /* inputs, alerts */
-  --su-r-sm:   11px;   /* bars, small toggles */
-  --su-r-card: 20px;   /* Flow 2 cards + hero */
-  --su-r-input:12px;   /* Flow 2 search field */
-  --su-r-bar:  10px;   /* Flow 2 funnel bars + track */
+  --su-r-lg:   var(--su-r-card);
+  --su-r-md:   var(--su-r-input);
+  --su-r-sm:   var(--su-r-chip);
+  --su-r-bar:  var(--su-r-chip);
 
-  /* ---- Elevation (used SPARINGLY — hero + Flow 2 cards) ---- */
-  --su-shadow-hero: 0 18px 42px -22px rgba(75,51,130,0.55);
-  --su-shadow-card: 0 10px 28px -20px rgba(60,40,90,0.16);
-
-  /* ---- Type ---- */
-  --su-font: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  /* ---- Elevation: none on cards; popovers use --su-shadow-pop ---- */
+  --su-shadow-hero: none;
+  --su-shadow-card: none;
 }
-
-/* Tabular figures for every metric/number. */
-.su-num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }

@@ -15,5 +15,5 @@ export default function GrowthStreak({ timelineData }) {
 
   if (streak < 2) return null
 
-  return <div className="growth-streak">🔥 {streak} consecutive periods of growth</div>
+  return <div className="growth-streak">{streak} consecutive periods of growth</div>
 }

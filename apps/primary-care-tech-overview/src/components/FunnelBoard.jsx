@@ -730,7 +730,7 @@ function PracticeBadges({ p }) {
   );
 }
 
-const nextIcon = (t) => (t === "Visit" ? "📍" : t === "Meeting" ? "📅" : "•");
+const nextIcon = (t) => (t === "Visit" ? "▸" : t === "Meeting" ? "◦" : "•");
 const VISIT_LABEL = { happened: "Completed", scheduled: "Confirmed", proposed: "Proposed", to_contact: "To contact" };
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -767,7 +767,7 @@ function LiveNotRecallingTable({ practices, onOpen }) {
         </tr>
       </thead>
       <tbody>
-        {!sorted.length && <tr className="empty"><td colSpan={5}>Every live practice is recalling 🎉</td></tr>}
+        {!sorted.length && <tr className="empty"><td colSpan={5}>Every live practice is recalling.</td></tr>}
         {sorted.map((p) => (
           <tr key={p.ods} onClick={() => onOpen(p)}>
             <td><span className="t-name">{p.name}<PracticeBadges p={p} /></span></td>

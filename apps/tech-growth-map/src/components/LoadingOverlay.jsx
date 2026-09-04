@@ -2,9 +2,9 @@ export default function LoadingOverlay({ error }) {
   if (error) {
     return (
       <div className="loading-overlay">
-        <div style={{ color: '#ef4444', fontSize: 14 }}>
+        <div className="loading-error">
           Error loading data.<br />
-          <small style={{ color: '#94a3b8' }}>{error}</small>
+          <small>{error}</small>
         </div>
       </div>
     )
