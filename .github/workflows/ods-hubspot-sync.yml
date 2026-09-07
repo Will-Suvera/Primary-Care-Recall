@@ -1,0 +1,46 @@
+name: ODS -> HubSpot company sync
+
+# Weekly: pull the current NHS ODS practice file (epraccur) and ePCN core-partner report and align
+# HubSpot GP Practice / PCN companies to them (official names, ODS codes, PCN + ICB links, open/closed
+# status, new practices). Merges and unmatched records are never done automatically - they land in the
+# review artifact. Policy agreed 2026-09-07. Secret needed: HUBSPOT_API_TOKEN (already present).
+
+on:
+  schedule:
+    - cron: '15 5 * * 1'   # Mondays 05:15 UTC - ODS publishes weekly/monthly updates
+  workflow_dispatch:
+    inputs:
+      plan_only:
+        description: 'Plan only (no HubSpot writes)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ods-hubspot-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run sync
+        env:
+          HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+        run: |
+          if [ "${{ inputs.plan_only }}" = "true" ]; then
+            python pipeline/ods_hubspot_sync.py --plan-only
+          else
+            python pipeline/ods_hubspot_sync.py
+          fi
+      - name: Upload plan, log and review list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ods-sync-${{ github.run_id }}
+          path: pipeline/.ods_sync/
+          retention-days: 90

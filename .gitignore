@@ -89,3 +89,4 @@ __pycache__/
 docs/marketing/
 pipeline/.ods_pcn_cache.json
 pipeline/.docusign_key.pem
+pipeline/.ods_sync/
