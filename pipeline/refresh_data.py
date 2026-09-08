@@ -1261,10 +1261,14 @@ def refresh_paid_customers():
             for a in assoc.get("results", []):
                 comp = hubspot_request(
                     "GET",
-                    f"/crm/v3/objects/companies/{a['toObjectId']}?properties=practice_code,ods_unique,name")
-                p = comp.get("properties", {})
-                ods = (p.get("practice_code") or p.get("ods_unique") or "").strip().upper()
-                if is_valid_ods(ods):
+                    f"/crm/v3/objects/companies/{a['toObjectId']}"
+                    "?properties=practice_code,ods_unique,name,organisation_type")
+                # A deal is often linked to both the practice and its PCN.
+                # Since the ODS sync stamps U-codes on PCNs, only a GP practice
+                # company may supply the ODS (2026-09-08: Chapelford's Gold
+                # marker vanished when its PCN's U45014 won the race).
+                kind, ods = classify_company(comp.get("properties", {}))
+                if kind == "practice":
                     paid_ods.add(ods)
                     break
             else:
