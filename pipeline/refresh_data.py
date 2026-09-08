@@ -541,6 +541,27 @@ def expand_pcn_to_practices(pcn_company_id):
 # Schema validation
 # ============================================================
 
+def classify_company(props):
+    """Sort a HubSpot company into ("pcn", None) / ("practice", ODS) / ("none", None).
+
+    The PCN check comes FIRST. The weekly ODS -> HubSpot sync writes the
+    PCN's own U-code into ods_unique, so a PCN company now carries a
+    valid-looking ODS. Taking that as a practice code silently drops the
+    whole network (U-codes aren't in practices_geocoded) - that's what
+    shrank the waitlist 476 -> 308 and tripped the shrink guard on 2026-09-07.
+    """
+    ods = props.get("ods_unique") or props.get("practice_code")
+    org_type = (props.get("organisation_type") or "").lower()
+    name = props.get("name") or ""
+    # Name fallback only when org_type doesn't already say GP practice, so a
+    # surgery with "PCN" in its trading name is never diverted into expansion.
+    if "pcn" in org_type or (not is_gp_practice(props) and "PCN" in name.upper()):
+        return "pcn", None
+    if is_valid_ods(ods):
+        return "practice", ods.strip().upper()
+    return "none", None
+
+
 def is_valid_ods(code):
     """True iff code looks like a real ODS code (3-10 alphanumerics)."""
     return isinstance(code, str) and 3 <= len(code.strip()) <= 10 and code.strip().isalnum()
@@ -614,16 +635,13 @@ def refresh_waitlist():
     no_ods_companies = []
 
     for comp_id, props in companies.items():
-        ods = props.get("ods_unique") or props.get("practice_code")
-        org_type = (props.get("organisation_type") or "").lower()
-        name = props.get("name", "")
-
-        if is_valid_ods(ods):
-            waitlist_ods.add(ods.strip().upper())
-        elif "pcn" in org_type or "pcn" in name.upper():
+        kind, ods = classify_company(props)
+        if kind == "pcn":
             pcn_ids.append(comp_id)
+        elif kind == "practice":
+            waitlist_ods.add(ods)
         else:
-            no_ods_companies.append((comp_id, name))
+            no_ods_companies.append((comp_id, props.get("name", "")))
 
     print(f"  Direct ODS codes: {len(waitlist_ods)}")
     print(f"  PCNs to expand: {len(pcn_ids)}")

@@ -35,7 +35,7 @@ both tabs. Tokens: `docs/design/suvera-flow.css` (copy into each app as `src/suv
 | Dark aubergine top bar (growth map) | Laptop: paper header, 1px hairline below, logo left, Bitter title, live/stale as a `.su-status` pill. TV mode: `--su-brand-deep` ground with white type. |
 | Left stats panel `#f0f3f9` with shadowed cards | Paper column, `.su-panel` cards, eyebrow label + `.su-kpi` number + one-line Inter caption. MoM badge = `.su-status`. |
 | Sparklines (multi-colour) | Line in `--su-brand`, 1.5px, faint area fill `--su-brand-tint`, endpoint dot. Axis text `--su-faint`. |
-| Map markers (bright status colours) | `--su-cat-live` / `--su-cat-onboarding` / `--su-cat-signed` / `--su-cat-none`; paid = 2px `--su-cat-paid-ring` outline. Light, low-saturation basemap (CARTO Positron or equivalent) so pins carry the colour. Popups = `.su-pop`. |
+| Map markers (bright status colours) | `--su-cat-live` / `--su-cat-onboarding` / `--su-cat-signed` / `--su-cat-none`; paid = `--su-cat-paid` gold fill with 2px `--su-cat-paid-ring` outline, drawn larger than Live. Light, low-saturation basemap (CARTO Positron or equivalent) so pins carry the colour. Popups = `.su-pop`. |
 | "Aurora" sidebar + page gradient (planner) | Paper sidebar, hairline right border, Inter nav with brand text for the active item and a `.su-chip` count. Content on paper, sections in `.su-panel`. |
 | Revenue hero gradient | The one allowed `--su-hero-grad` surface; Bitter number; muted caption. |
 | Funnel stage bars / recharts palette | `--su-series-*`; grid lines `--su-line`; tooltips `.su-pop`. |

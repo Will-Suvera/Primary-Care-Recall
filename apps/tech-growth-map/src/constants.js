@@ -19,6 +19,7 @@ export const STALE_THRESHOLD_MS = 15 * 60 * 1000 // 15 minutes
 const FLOW = {
   brand: '#482190',      // --su-cat-live
   brandDeep: '#2E1560',
+  gold: '#C9A227',       // --su-cat-paid
   ink: '#0E0D0B',        // --su-cat-paid-ring
   amber: '#C4813A',      // --su-cat-onboarding
   sage: '#5E8C7A',       // --su-cat-signed
@@ -27,8 +28,8 @@ const FLOW = {
 }
 
 export const MARKER_STYLES = {
-  // Paid (Gold tier) — the headline: brand fill with a heavy ink ring.
-  paid: { color: FLOW.ink, fillColor: FLOW.brand, radius: 12, fillOpacity: 1.0, weight: 3, opacity: 1.0 },
+  // Paid (Gold tier) — the headline: gold fill with an ink ring, larger than Live.
+  paid: { color: FLOW.ink, fillColor: FLOW.gold, radius: 10, fillOpacity: 1.0, weight: 2.5, opacity: 1.0 },
   // Live — the brand colour, because it is the thing we sell.
   fullPlanner: { color: FLOW.brandDeep, fillColor: FLOW.brand, radius: 6.5, fillOpacity: 0.95, weight: 1.2, opacity: 0.95 },
   // Onboarding — warm amber.

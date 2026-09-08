@@ -168,5 +168,35 @@ class TestPCNWhitelist(unittest.TestCase):
         self.assertFalse(refresh_data.is_gp_practice({"organisation_type": ""}))
 
 
+class TestClassifyCompany(unittest.TestCase):
+    """PCNs must be expanded even when the ODS sync has stamped a U-code on them."""
+
+    def test_pcn_with_ucode_is_still_expanded(self):
+        # Regression: 2026-09-07 the ODS -> HubSpot sync wrote pcn U-codes into
+        # ods_unique and the waitlist collapsed 476 -> 308.
+        props = {"name": "Darlington PCN", "organisation_type": "PCN", "ods_unique": "U12345"}
+        self.assertEqual(refresh_data.classify_company(props), ("pcn", None))
+
+    def test_pcn_by_name_only(self):
+        props = {"name": "EPSOM PCN", "organisation_type": "", "practice_code": "U54321"}
+        self.assertEqual(refresh_data.classify_company(props), ("pcn", None))
+
+    def test_gp_practice_named_pcn_is_not_expanded(self):
+        props = {"name": "PCN Hub Surgery", "organisation_type": "GP Practice", "ods_unique": "C11111"}
+        self.assertEqual(refresh_data.classify_company(props), ("practice", "C11111"))
+
+    def test_practice_with_ods(self):
+        props = {"name": "Some Surgery", "organisation_type": "GP Practice", "ods_unique": " a12345 "}
+        self.assertEqual(refresh_data.classify_company(props), ("practice", "A12345"))
+
+    def test_practice_falls_back_to_practice_code(self):
+        props = {"name": "Some Surgery", "organisation_type": "GP Practice", "practice_code": "B99999"}
+        self.assertEqual(refresh_data.classify_company(props), ("practice", "B99999"))
+
+    def test_no_ods_no_pcn(self):
+        props = {"name": "Some Federation", "organisation_type": "Federation"}
+        self.assertEqual(refresh_data.classify_company(props), ("none", None))
+
+
 if __name__ == "__main__":
     unittest.main()

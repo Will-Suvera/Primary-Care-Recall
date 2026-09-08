@@ -239,7 +239,7 @@ html.tv .has-tooltip::after { display: none; }
 .legend-dot.live { background: var(--su-cat-live); }
 .legend-dot.in-progress { background: var(--su-cat-onboarding); }
 .legend-dot.full-planner { background: var(--su-cat-live); }
-.legend-dot.paid { background: var(--su-cat-live); border: 2px solid var(--su-cat-paid-ring); width: 1rem; height: 1rem; }
+.legend-dot.paid { background: var(--su-cat-paid); border: 2px solid var(--su-cat-paid-ring); width: .9rem; height: .9rem; }
 
 /* ---- Map ---- */
 .map-container { flex: 1; position: relative; }
@@ -313,7 +313,7 @@ html.tv .leaflet-control-zoom { display: none; }
 }
 @keyframes marker-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 /* Paid practices keep their ink ring while pulsing — the tier outranks the activity. */
-.marker-flashing.marker-gold { stroke: var(--su-cat-paid-ring) !important; fill: var(--su-brand) !important; }
+.marker-flashing.marker-gold { stroke: var(--su-cat-paid-ring) !important; fill: var(--su-cat-paid) !important; }
 
 /* ---- Practice search (top-right, left of the timeline slider) ---- */
 .map-search { position: absolute; top: 3rem; right: 22rem; z-index: 851; }
@@ -433,7 +433,7 @@ html.tv .map-search { display: none; }
 .popup-icb { color: var(--su-faint); font-size: .72rem; }
 .popup-status { display: inline-flex; align-items: center; gap: .4rem; margin-top: .45rem; font-weight: 600; font-size: .75rem; color: var(--su-ink); }
 .popup-status::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--su-faint); }
-.popup-status.paid::before { background: var(--su-cat-live); box-shadow: 0 0 0 2px var(--su-cat-paid-ring); }
+.popup-status.paid::before { background: var(--su-cat-paid); box-shadow: 0 0 0 2px var(--su-cat-paid-ring); }
 .popup-status.live::before { background: var(--su-cat-live); }
 .popup-status.in-progress::before { background: var(--su-cat-onboarding); }
 .popup-status.waitlist::before { background: var(--su-cat-signed); }
