@@ -37,6 +37,8 @@ jobs:
           DOCUSIGN_PRIVATE_KEY: ${{ secrets.DOCUSIGN_PRIVATE_KEY }}
           DOCUSIGN_AUTH_SERVER: ${{ secrets.DOCUSIGN_AUTH_SERVER }}
           GOOGLE_SHEETS_SA_JSON: ${{ secrets.GOOGLE_SHEETS_SA_JSON }}
+          DRIVE_WEBAPP_URL: ${{ secrets.DRIVE_WEBAPP_URL }}
+          DRIVE_WEBAPP_SECRET: ${{ secrets.DRIVE_WEBAPP_SECRET }}
         run: |
           pip install -q cryptography pypdf google-api-python-client google-auth
           python3 pipeline/sync_docusign_contracts.py

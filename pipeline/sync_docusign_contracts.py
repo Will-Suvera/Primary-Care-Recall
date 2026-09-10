@@ -456,6 +456,29 @@ def drive_upload(pdf, customer, envelope_id, signed_date, dry_run):
     if not customer:
         return "", ""
     fname = f"{customer} - Suvera Recall Agreement (signed {signed_date or 'date unknown'}) - {envelope_id}.pdf"
+    # Preferred route: the Apps Script web app (pipeline/drive_contracts_webapp.gs)
+    # deployed under Will's account — files land owned by Suvera, no service
+    # account needs access to the folder.
+    webapp = os.environ.get("DRIVE_WEBAPP_URL", "")
+    if webapp:
+        if dry_run:
+            print(f"  DRY RUN Drive: would file {fname} under '{customer}' via the web app")
+            return "", ""
+        try:
+            payload = json.dumps({"secret": os.environ.get("DRIVE_WEBAPP_SECRET", ""),
+                                  "customer": customer, "filename": fname, "envelope_id": envelope_id,
+                                  "pdf_base64": base64.b64encode(pdf).decode()}).encode()
+            req = urllib.request.Request(webapp, data=payload, method="POST",
+                                         headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=120) as r:  # Apps Script 302s to the result
+                res = json.loads(r.read())
+            if res.get("error"):
+                raise RuntimeError(res["error"])
+            print(f"  Drive: {'filed' if res.get('created') else 'already filed'} {fname} under '{customer}'")
+            return res.get("folder_url", ""), res.get("file_url", "")
+        except Exception as e:
+            print(f"  WARN: Drive web app failed — {str(e)[:160]}")
+            return "", ""
     try:
         drv = _google("drive", "v3")
         q = (f"'{DRIVE_PARENT}' in parents and mimeType='application/vnd.google-apps.folder' "
