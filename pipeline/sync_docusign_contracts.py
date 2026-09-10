@@ -67,6 +67,7 @@ ODS_RE = re.compile(r"\b[A-Z]\d[0-9A-Z]{4,5}\b")
 
 FINANCE_SHEET_ID = "1js7pGfDnyOdyq5fRPetXflEAx94SUmnltkfO-lAvOSc"  # Primary/Recall Contracts
 FINANCE_TAB = "API/WG"
+FINANCE_TAB_GID = 1347448816
 FINANCE_HEADERS = ["Legal name", "Commencement date", "1st Revenue Month", "Expected go-live date",
                    "Years (initial term)", "Price per patient (exc VAT)", "Monthly price (exc VAT)",
                    "1st invoice value (signed → go-live, roundup)", "ARR", "Y1 price (exc VAT)",
@@ -631,11 +632,24 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, lin
     if any(len(row) >= 13 and envelope_id in row[12] for row in existing):
         print(f"  finance sheet: envelope {envelope_id} already on {FINANCE_TAB}")
         return
-    row_no = len(existing) + 1
+    # The MRR/ARR summary block sits under the data behind one blank row. New
+    # rows go into a row INSERTED at that blank row, so the block (and the
+    # SUM/AVERAGE ranges, which end on the blank row) shift down and expand.
+    summary_at = next((i + 1 for i, row in enumerate(existing)
+                       if len(row) > 5 and str(row[5]).strip() == "MRR"), None)
+    if summary_at:
+        row_no = summary_at - 1  # the blank gap row
+    else:
+        row_no = max((i + 1 for i, row in enumerate(existing) if row and str(row[0]).strip()), default=1) + 1
     row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links)
     if dry_run:
-        print(f"  DRY RUN finance sheet: would append row {row_no}: {row}")
+        print(f"  DRY RUN finance sheet: would {'insert' if summary_at else 'append'} row {row_no}: {row}")
         return
+    if summary_at:
+        svc.spreadsheets().batchUpdate(spreadsheetId=FINANCE_SHEET_ID, body={"requests": [
+            {"insertDimension": {"range": {"sheetId": FINANCE_TAB_GID, "dimension": "ROWS",
+                                           "startIndex": row_no - 1, "endIndex": row_no},
+                                 "inheritFromBefore": True}}]}).execute()
     vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A{row_no}",
                 valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
     print(f"  finance sheet: row {row_no} added for '{parsed['customer']}'")
