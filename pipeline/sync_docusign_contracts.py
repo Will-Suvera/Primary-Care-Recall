@@ -62,12 +62,14 @@ FINANCE_TAB = "API/WG"
 FINANCE_HEADERS = ["Legal name", "Commencement date", "1st Revenue Month", "Expected go-live date",
                    "Years (initial term)", "Price per patient (exc VAT)", "Monthly price (exc VAT)",
                    "1st invoice value (signed → go-live, roundup)", "ARR", "Y1 price (exc VAT)",
-                   "Y2 price (exc VAT)", "Register size", "Notes"]
+                   "Y2 price (exc VAT)", "Register size", "Notes", "Contract PDF"]
 
 DS_AUTH = os.environ.get("DOCUSIGN_AUTH_SERVER", "account-d.docusign.com")
 
 
 def docusign_url(envelope_id):
+    if not re.fullmatch(r"[0-9A-Fa-f-]{36}", envelope_id or ""):
+        return ""  # backfilled from a Drive copy / manual id: no envelope to link
     host = "apps-d.docusign.com" if DS_AUTH.startswith("account-d") else "app.docusign.com"
     return f"https://{host}/documents/details/{envelope_id}"
 
@@ -155,36 +157,46 @@ def parse_contract(pdf_bytes):
     text = re.sub(r"\s+", " ", text)
     out = {"customer": "", "ods_codes": [], "practices": [], "commencement": "",
            "term_months": None, "price_y1": None, "price_y2": None, "register": None,
-           "annual_fee": None, "sms_included": None}
+           "annual_fee": None, "annual_fee_y2": None, "sms_included": None}
     m = re.search(r"Customer Details\s+Customer\s+(.+?)\s+Customer Address", text)
     if m:
         out["customer"] = m.group(1).strip()
     # ---- commercial terms (best effort; blanks are filled by finance by hand) ----
     sched = text[text.find("Customer Details"):] if "Customer Details" in text else text
-    m = re.search(r"Commencement Date\s+(.+?)\s+(?:Initial Term|Contact for|Clinical systems|"
-                  r"Annual Fee|Register Size|Suvera Service|Fees|Signed)", sched)
+    m = re.search(r"Commencement Date\s+(.*?)\s*(?:Initial Term|Practice Register|Register Size|Contact for|"
+                  r"Clinical systems|Annual Fee|Suvera Service|Fees|SIGNED)", sched)
     if m:
-        out["commencement"] = m.group(1).strip()[:160]
-    m = (re.search(r"[Ii]nitial [Tt]erm of (\d+) months", text)
+        v = m.group(1).strip()
+        out["commencement"] = "" if ("@" in v or not v) else v[:160]  # a mis-keyed email is not a date
+    m = (re.search(r"[Ii]nitial [Tt]erm (?:of|is) (\d+) months", text)
          or re.search(r"Initial Term\s+(\d+) months", text)
-         or re.search(r"initial term of (\d+) years?", text))
+         or re.search(r"[Ii]nitial [Tt]erm (?:of|is) (\d+) years?", text))
     if m:
         n = int(m.group(1))
         out["term_months"] = n * 12 if "year" in m.group(0) else n
-    prices = re.findall(r"£\s?(\d\.\d{2,4})\s*(?:\+\s*VAT\s*)?per patient", text)
-    if prices:
-        out["price_y1"] = float(prices[0])
-    m = re.search(r"(?:Year 2|second (?:Contract )?[Yy]ear|Y2|from the second)[^£]{0,80}£\s?(\d\.\d{2,4})", text)
+    # "£0.60 + VAT Y1 & £0.65 + VAT Y2 per patient" / "£0.75 + VAT per patient" /
+    # "£ 0.75 0.55 VAT per patient" (struck-through list price, then the agreed one)
+    m = re.search(r"£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y1\s*&\s*£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y2", text)
     if m:
-        out["price_y2"] = float(m.group(1))
+        out["price_y1"], out["price_y2"] = float(m.group(1)), float(m.group(2))
+    else:
+        m = re.search(r"£[^£]{0,30}?(\d\.\d{2,4})\s*(?:\+\s*)?VAT\s*per patient", text)
+        if m:
+            out["price_y1"] = float(m.group(1))
+        m = re.search(r"(?:Year 2|second (?:Contract )?[Yy]ear|Y2|from the second)[^£]{0,80}£\s?(\d\.\d{2,4})", text)
+        if m:
+            out["price_y2"] = float(m.group(1))
     m = (re.search(r"combined register of\s*([\d,]{4,})", text)
          or re.search(r"([\d,]{4,})\s*total", text)
          or re.search(r"Register Size[^\d]{0,80}([\d,]{4,})", text))
     if m:
         out["register"] = int(m.group(1).replace(",", ""))
-    m = re.search(r"(?:Annual Fee|an indicative)[^£]{0,60}£\s?([\d,]+(?:\.\d+)?)", text)
+    m = re.search(r"(?:Annual Fee|an indicative)[^£]{0,60}£\s?([\d,]+(?:\.\d+)?)"
+                  r"(?:\s*(?:Y1|year 1)\s*,\s*£\s?([\d,]+(?:\.\d+)?)\s*(?:Y2|year 2))?", text)
     if m:
         out["annual_fee"] = float(m.group(1).replace(",", ""))
+        if m.group(2):
+            out["annual_fee_y2"] = float(m.group(2).replace(",", ""))
     if re.search(r"SMS", text):
         out["sms_included"] = bool(re.search(r"(?:unlimited[^.]{0,40}SMS|SMS[^.]{0,60}included)", text, re.I))
     out["ods_codes"] = [c for c in dict.fromkeys(ODS_RE.findall(text)) if c not in SUVERA_ODS]
@@ -435,7 +447,12 @@ def _sheets_service():
 def drive_upload(pdf, customer, envelope_id, signed_date, dry_run):
     """Create (or reuse) the customer's folder under DRIVE_PARENT and put the
     signed PDF in it. Returns (folder_url, file_url); ("", "") on any failure
-    so Drive never blocks the HubSpot/Notion/sheet steps."""
+    so Drive never blocks the HubSpot/Notion/sheet steps. Backfill from a PDF
+    that already lives on Drive: --drive-folder URL --drive-file URL."""
+    if "--drive-file" in sys.argv or "--drive-folder" in sys.argv:
+        argv = sys.argv
+        return (argv[argv.index("--drive-folder") + 1] if "--drive-folder" in argv else "",
+                argv[argv.index("--drive-file") + 1] if "--drive-file" in argv else "")
     if not customer:
         return "", ""
     fname = f"{customer} - Suvera Recall Agreement (signed {signed_date or 'date unknown'}) - {envelope_id}.pdf"
@@ -474,18 +491,27 @@ def drive_upload(pdf, customer, envelope_id, signed_date, dry_run):
         return "", ""
 
 
-def _parse_date(s):
-    """'1st June 2026' / '3 September 2026' / '03/09/2026' -> date, else None."""
+def _parse_date(s, year_hint=None):
+    """'1st June 2026' / '28th July, 2026' / '23.06.26' / '03/09/2026' /
+    'Friday 10th July' (year from year_hint) -> date, else None."""
     if not s:
         return None
     s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s)
-    for fmt in ("%d %B %Y", "%d %b %Y", "%d/%m/%Y", "%Y-%m-%d", "%B %d %Y"):
+    s = re.sub(r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b,?\s*", "", s)
+    s = s.replace(",", " ").strip()
+    s = re.sub(r"\s+", " ", s)
+    for fmt in ("%d %B %Y", "%d %b %Y", "%d/%m/%Y", "%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%B %d %Y"):
         try:
-            return datetime.strptime(s.strip(), fmt).date()
+            return datetime.strptime(s, fmt).date()
         except ValueError:
             pass
     m = re.search(r"\d{1,2} \w+ \d{4}", s)
-    return _parse_date(m.group(0)) if m and m.group(0) != s.strip() else None
+    if m and m.group(0) != s:
+        return _parse_date(m.group(0))
+    m = re.search(r"^(\d{1,2} [A-Za-z]+)$", s)  # day + month, no year
+    if m and year_hint:
+        return _parse_date(f"{m.group(1)} {year_hint}")
+    return None
 
 
 def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links=None):
@@ -493,36 +519,42 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links
     reference the row) so the tab reads exactly like the manual one."""
     r = row_no
     signed = _parse_date(signed_date) if signed_date else None
-    comm = _parse_date(parsed["commencement"]) or signed
+    comm = _parse_date(parsed["commencement"], signed.year if signed else None) or signed
     years = round(parsed["term_months"] / 12, 4) if parsed["term_months"] else ""
     p1, p2, reg = parsed["price_y1"], parsed["price_y2"], parsed["register"]
     if not reg and covered:
         reg = sum(int(enrich[c].get("patients") or 0) for c in covered if c in enrich) or None
     y1 = parsed["annual_fee"] or (round(reg * p1, 2) if reg and p1 else "")
-    y2 = (round(reg * p2, 2) if reg and p2 else
-          ("auto-renews (same rate)" if years and years <= 1 else (y1 if years and years > 1 else "")))
+    y2 = (parsed["annual_fee_y2"] or (round(reg * p2, 2) if reg and p2 else None)
+          or ("auto-renews (same rate)" if years and years <= 1 else (y1 if years and years > 1 else "")))
     ppp = f"{p1} Y1 / {p2} Y2" if p1 and p2 and p2 != p1 else (p1 if p1 else "")
     notes = []
     if parsed["practices"]:
         notes.append("Practices: " + ", ".join(p["name"] for p in parsed["practices"]))
     elif covered:
-        notes.append("Practices: " + ", ".join(sorted(covered)))
+        notes.append("Practices: " + ", ".join(
+            f"{enrich[c]['name'].title()} ({c})" if c in enrich else c for c in sorted(covered)))
     if parsed["commencement"] and len(parsed["commencement"]) > 24:  # conditional wording, not a plain date
         notes.append(f"Commencement per contract: {parsed['commencement']}"
                      + ("" if _parse_date(parsed["commencement"]) else " (signed date used)"))
     if parsed["sms_included"] is False:
         notes.append("Excludes SMS")
+    if "--note" in sys.argv:
+        notes.append(sys.argv[sys.argv.index("--note") + 1])
     notes.append(f"Signed {signed.isoformat() if signed else '?'} · DocuSign envelope {envelope_id} · added by contract sync")
     for label, key in (("HubSpot deal", "hubspot"), ("Contract folder", "drive_folder"), ("DocuSign", "docusign")):
         if (links or {}).get(key):
             notes.append(f"{label}: {links[key]}")
     def d(x):
         return x.strftime("%d %b %Y") if x else ""
+    L = links or {}
+    pdf_link = (f'=HYPERLINK("{L["drive_file"]}","Open PDF (Drive)")' if L.get("drive_file") else
+                f'=HYPERLINK("{L["hubspot"]}","Open deal (HubSpot)")' if L.get("hubspot") else "")
     return [parsed["customer"] or "", d(comm), f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")', "",
             years, ppp, f"=IF(ISNUMBER(J{r}),ROUND(J{r}/12,2),\"\")",
             f'=IF(ISNUMBER(D{r}),ROUND(ROUNDUP((D{r}-B{r})/31,0)*G{r},2),"")',
             f'=IF(AND(ISNUMBER(J{r}),ISNUMBER(E{r})),J{r}/MIN(1,E{r}),"")',
-            y1, y2, reg or "", " | ".join(notes)]
+            y1, y2, reg or "", " | ".join(notes), pdf_link]
 
 
 def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links=None):
@@ -532,7 +564,7 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, lin
         print(f"  WARN: finance sheet skipped — {str(e)[:120]}")
         return
     vals = svc.spreadsheets().values()
-    existing = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:M").execute().get("values", [])
+    existing = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:N").execute().get("values", [])
     if not existing:
         vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A1",
                     valueInputOption="RAW", body={"values": [FINANCE_HEADERS]}).execute()
