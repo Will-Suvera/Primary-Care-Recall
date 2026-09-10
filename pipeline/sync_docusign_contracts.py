@@ -21,9 +21,16 @@ Env: DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_USER_ID, DOCUSIGN_PRIVATE_KEY (or
 DOCUSIGN_PRIVATE_KEY_FILE), DOCUSIGN_AUTH_SERVER (account-d.docusign.com for
 sandbox, account.docusign.com once live), HUBSPOT_API_TOKEN, NOTION_API_TOKEN.
 
+Each signed contract also becomes a row on the finance tracker (Google Sheet
+"Primary/Recall Contracts", tab API/WG — same 13 headers as the head of
+finance's manual tab): legal name, commencement, term, price per patient,
+register, ARR and the finance formulas for monthly / first-invoice values.
+Auth: GOOGLE_SHEETS_SA_JSON (service-account JSON) or the repo-root key file.
+
 Modes:
-  (default)                 poll DocuSign for envelopes completed in the last 30 days
+  (default)                 poll DocuSign for envelopes completed in the last 30 days (--days N)
   --file X.pdf --envelope-id ID [--signed YYYY-MM-DD]   process a local PDF (testing / backfill)
+  --sheet-only              with --file: only write the finance-sheet row
   --dry-run                 parse + report, change nothing
 """
 import base64
@@ -45,6 +52,13 @@ from sync_notion_recall_practices import (  # noqa: E402
 CS_PIPELINE_ID = "2391616730"
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
 ODS_RE = re.compile(r"\b[A-Z]\d[0-9A-Z]{4,5}\b")
+
+FINANCE_SHEET_ID = "1js7pGfDnyOdyq5fRPetXflEAx94SUmnltkfO-lAvOSc"  # Primary/Recall Contracts
+FINANCE_TAB = "API/WG"
+FINANCE_HEADERS = ["Legal name", "Commencement date", "1st Revenue Month", "Expected go-live date",
+                   "Years (initial term)", "Price per patient (exc VAT)", "Monthly price (exc VAT)",
+                   "1st invoice value (signed → go-live, roundup)", "ARR", "Y1 price (exc VAT)",
+                   "Y2 price (exc VAT)", "Register size", "Notes"]
 
 DS_AUTH = os.environ.get("DOCUSIGN_AUTH_SERVER", "account-d.docusign.com")
 DS_KEY = os.environ.get("DOCUSIGN_INTEGRATION_KEY", "")
@@ -124,11 +138,42 @@ def parse_contract(pdf_bytes):
     from pypdf import PdfReader
     import io
     text = " ".join((pg.extract_text() or "") for pg in PdfReader(io.BytesIO(pdf_bytes)).pages)
+    text = re.sub(r"[\ue000-\uf8ff]", "", text)  # private-use glyphs the PDF fonts leave behind
     text = re.sub(r"\s+", " ", text)
-    out = {"customer": "", "ods_codes": [], "practices": []}
+    out = {"customer": "", "ods_codes": [], "practices": [], "commencement": "",
+           "term_months": None, "price_y1": None, "price_y2": None, "register": None,
+           "annual_fee": None, "sms_included": None}
     m = re.search(r"Customer Details\s+Customer\s+(.+?)\s+Customer Address", text)
     if m:
         out["customer"] = m.group(1).strip()
+    # ---- commercial terms (best effort; blanks are filled by finance by hand) ----
+    sched = text[text.find("Customer Details"):] if "Customer Details" in text else text
+    m = re.search(r"Commencement Date\s+(.+?)\s+(?:Initial Term|Contact for|Clinical systems|"
+                  r"Annual Fee|Register Size|Suvera Service|Fees|Signed)", sched)
+    if m:
+        out["commencement"] = m.group(1).strip()[:160]
+    m = (re.search(r"[Ii]nitial [Tt]erm of (\d+) months", text)
+         or re.search(r"Initial Term\s+(\d+) months", text)
+         or re.search(r"initial term of (\d+) years?", text))
+    if m:
+        n = int(m.group(1))
+        out["term_months"] = n * 12 if "year" in m.group(0) else n
+    prices = re.findall(r"£\s?(\d\.\d{2,4})\s*(?:\+\s*VAT\s*)?per patient", text)
+    if prices:
+        out["price_y1"] = float(prices[0])
+    m = re.search(r"(?:Year 2|second (?:Contract )?[Yy]ear|Y2|from the second)[^£]{0,80}£\s?(\d\.\d{2,4})", text)
+    if m:
+        out["price_y2"] = float(m.group(1))
+    m = (re.search(r"combined register of\s*([\d,]{4,})", text)
+         or re.search(r"([\d,]{4,})\s*total", text)
+         or re.search(r"Register Size[^\d]{0,80}([\d,]{4,})", text))
+    if m:
+        out["register"] = int(m.group(1).replace(",", ""))
+    m = re.search(r"(?:Annual Fee|an indicative)[^£]{0,60}£\s?([\d,]+(?:\.\d+)?)", text)
+    if m:
+        out["annual_fee"] = float(m.group(1).replace(",", ""))
+    if re.search(r"SMS", text):
+        out["sms_included"] = bool(re.search(r"(?:unlimited[^.]{0,40}SMS|SMS[^.]{0,60}included)", text, re.I))
     out["ods_codes"] = [c for c in dict.fromkeys(ODS_RE.findall(text)) if c not in SUVERA_ODS]
     # register line: "21,978 (The Pall Mall Surgery), 15,583 (Highlands Surgery) 37,561 total"
     m = re.search(r"Register Size.*?Date\s*\)\s*(.+?)(?:Annual Fee|SIGNED)", text)
@@ -327,6 +372,94 @@ def notion_attach(pdf, envelope_id, covered, signed_date, dry_run):
         print(f"  Notion: attached {fname} to {row['name']}")
 
 
+# ---------- finance tracker (Google Sheet) ----------
+
+def _sheets_service():
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+    raw = os.environ.get("GOOGLE_SHEETS_SA_JSON", "")
+    if raw:
+        info = json.loads(raw)
+    else:
+        info = json.loads((Path(__file__).resolve().parent.parent / "nhsjobscraper-db905ad21287.json").read_text())
+    creds = Credentials.from_service_account_info(
+        info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+
+def _parse_date(s):
+    """'1st June 2026' / '3 September 2026' / '03/09/2026' -> date, else None."""
+    if not s:
+        return None
+    s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s)
+    for fmt in ("%d %B %Y", "%d %b %Y", "%d/%m/%Y", "%Y-%m-%d", "%B %d %Y"):
+        try:
+            return datetime.strptime(s.strip(), fmt).date()
+        except ValueError:
+            pass
+    m = re.search(r"\d{1,2} \w+ \d{4}", s)
+    return _parse_date(m.group(0)) if m and m.group(0) != s.strip() else None
+
+
+def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no):
+    """One API/WG row, using the head of finance's own formulas (columns G, H, I
+    reference the row) so the tab reads exactly like the manual one."""
+    r = row_no
+    signed = _parse_date(signed_date) if signed_date else None
+    comm = _parse_date(parsed["commencement"]) or signed
+    years = round(parsed["term_months"] / 12, 4) if parsed["term_months"] else ""
+    p1, p2, reg = parsed["price_y1"], parsed["price_y2"], parsed["register"]
+    if not reg and covered:
+        reg = sum(int(enrich[c].get("patients") or 0) for c in covered if c in enrich) or None
+    y1 = parsed["annual_fee"] or (round(reg * p1, 2) if reg and p1 else "")
+    y2 = (round(reg * p2, 2) if reg and p2 else
+          ("auto-renews (same rate)" if years and years <= 1 else (y1 if years and years > 1 else "")))
+    ppp = f"{p1} Y1 / {p2} Y2" if p1 and p2 and p2 != p1 else (p1 if p1 else "")
+    notes = []
+    if parsed["practices"]:
+        notes.append("Practices: " + ", ".join(p["name"] for p in parsed["practices"]))
+    elif covered:
+        notes.append("Practices: " + ", ".join(sorted(covered)))
+    if parsed["commencement"] and len(parsed["commencement"]) > 24:  # conditional wording, not a plain date
+        notes.append(f"Commencement per contract: {parsed['commencement']}"
+                     + ("" if _parse_date(parsed["commencement"]) else " (signed date used)"))
+    if parsed["sms_included"] is False:
+        notes.append("Excludes SMS")
+    notes.append(f"Signed {signed.isoformat() if signed else '?'} · DocuSign envelope {envelope_id} · added by contract sync")
+    def d(x):
+        return x.strftime("%d %b %Y") if x else ""
+    return [parsed["customer"] or "", d(comm), f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")', "",
+            years, ppp, f"=IF(ISNUMBER(J{r}),ROUND(J{r}/12,2),\"\")",
+            f'=IF(ISNUMBER(D{r}),ROUND(ROUNDUP((D{r}-B{r})/31,0)*G{r},2),"")',
+            f'=IF(AND(ISNUMBER(J{r}),ISNUMBER(E{r})),J{r}/MIN(1,E{r}),"")',
+            y1, y2, reg or "", " | ".join(notes)]
+
+
+def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run):
+    try:
+        svc = _sheets_service()
+    except Exception as e:  # missing key / libs: never block the HubSpot+Notion steps
+        print(f"  WARN: finance sheet skipped — {str(e)[:120]}")
+        return
+    vals = svc.spreadsheets().values()
+    existing = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:M").execute().get("values", [])
+    if not existing:
+        vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A1",
+                    valueInputOption="RAW", body={"values": [FINANCE_HEADERS]}).execute()
+        existing = [FINANCE_HEADERS]
+    if any(len(row) >= 13 and envelope_id in row[12] for row in existing):
+        print(f"  finance sheet: envelope {envelope_id} already on {FINANCE_TAB}")
+        return
+    row_no = len(existing) + 1
+    row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no)
+    if dry_run:
+        print(f"  DRY RUN finance sheet: would append row {row_no}: {row}")
+        return
+    vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A{row_no}",
+                valueInputOption="USER_ENTERED", body={"values": [row]}).execute()
+    print(f"  finance sheet: row {row_no} added for '{parsed['customer']}'")
+
+
 def process(pdf, envelope_id, signed_date, enrich, dry_run):
     parsed = parse_contract(pdf)
     covered = resolve_covered_ods(parsed, enrich)
@@ -341,6 +474,7 @@ def process(pdf, envelope_id, signed_date, enrich, dry_run):
             raise
         print("  WARN: skipped HubSpot attach — add the Files scope to the private app")
     notion_attach(pdf, envelope_id, covered, signed_date, dry_run)
+    sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run)
 
 
 def main():
@@ -356,6 +490,12 @@ def main():
                   if "--envelope-id" in sys.argv else "manual")
         signed = (sys.argv[sys.argv.index("--signed") + 1]
                   if "--signed" in sys.argv else None)
+        if "--sheet-only" in sys.argv:
+            parsed = parse_contract(pdf)
+            covered = resolve_covered_ods(parsed, enrich)
+            print(f"  parsed: {parsed} -> covered={sorted(covered)}")
+            sheet_append(parsed, covered, env_id, signed, enrich, dry_run)
+            return
         if not dry_run and hubspot_has_file(f"contract_{env_id}.pdf"):
             print(f"contract_{env_id}.pdf already in HubSpot — skipping upload, "
                   f"still checking Notion")
@@ -369,8 +509,9 @@ def main():
         sys.exit("DocuSign env vars not set")
     token = ds_token()
     acct, base = ds_account(token)
-    envs = ds_completed_envelopes(token, acct, base)
-    print(f"{len(envs)} completed envelope(s) in the last 30 days ({DS_AUTH})")
+    days = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 30
+    envs = ds_completed_envelopes(token, acct, base, days)
+    print(f"{len(envs)} completed envelope(s) in the last {days} days ({DS_AUTH})")
     for e in envs:
         env_id = e["envelopeId"]
         if hubspot_has_file(f"contract_{env_id}.pdf"):

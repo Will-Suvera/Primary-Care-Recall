@@ -36,8 +36,9 @@ jobs:
           DOCUSIGN_USER_ID: ${{ secrets.DOCUSIGN_USER_ID }}
           DOCUSIGN_PRIVATE_KEY: ${{ secrets.DOCUSIGN_PRIVATE_KEY }}
           DOCUSIGN_AUTH_SERVER: ${{ secrets.DOCUSIGN_AUTH_SERVER }}
+          GOOGLE_SHEETS_SA_JSON: ${{ secrets.GOOGLE_SHEETS_SA_JSON }}
         run: |
-          pip install -q cryptography pypdf
+          pip install -q cryptography pypdf google-api-python-client google-auth
           python3 pipeline/sync_docusign_contracts.py
       - name: Sync to Notion
         env:
