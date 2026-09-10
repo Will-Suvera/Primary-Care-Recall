@@ -1,14 +1,14 @@
 {
   "date": "2026-09-10",
-  "timestamp": "2026-09-10T08:33:01.202477+00:00",
+  "timestamp": "2026-09-10T08:38:41.665906+00:00",
   "practices": {
     "live_planner": 24,
     "live_full_planner": 35,
     "live": 59,
-    "waitlist": 488,
-    "pipeline": 547,
+    "waitlist": 489,
+    "pipeline": 548,
     "total": 6378,
-    "coverage_pct": 8.58
+    "coverage_pct": 8.59
   },
   "patients": {
     "live_planner": 247250,
@@ -367,6 +367,7 @@
     "G82150",
     "G82218",
     "G82219",
+    "G82225",
     "G82647",
     "G82666",
     "G82796",
