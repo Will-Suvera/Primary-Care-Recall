@@ -47,7 +47,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_notion_recall_practices import (  # noqa: E402
     _request, hs, notion, norm_name, load_enrichment, GEOCODED,
-    NOTION_DB_ID, fetch_practice_rows, PIPELINE_ID)
+    NOTION_DB_ID, fetch_practice_rows, PIPELINE_ID, create_practice_page,
+    _copy_blocks, NOTION_TEMPLATE_PAGE)
+
+HUBSPOT_PORTAL = "143576889"
+DRIVE_PARENT = "1M8tBbnYdgVDHtKuFrmhDy1dz0II6sCZF"  # T&C Contracts / 2. Signed Contracts (Partners)
 
 CS_PIPELINE_ID = "2391616730"
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
@@ -61,6 +65,15 @@ FINANCE_HEADERS = ["Legal name", "Commencement date", "1st Revenue Month", "Expe
                    "Y2 price (exc VAT)", "Register size", "Notes"]
 
 DS_AUTH = os.environ.get("DOCUSIGN_AUTH_SERVER", "account-d.docusign.com")
+
+
+def docusign_url(envelope_id):
+    host = "apps-d.docusign.com" if DS_AUTH.startswith("account-d") else "app.docusign.com"
+    return f"https://{host}/documents/details/{envelope_id}"
+
+
+def hubspot_deal_url(deal_id):
+    return f"https://app-eu1.hubspot.com/contacts/{HUBSPOT_PORTAL}/record/0-3/{deal_id}"
 DS_KEY = os.environ.get("DOCUSIGN_INTEGRATION_KEY", "")
 DS_USER = os.environ.get("DOCUSIGN_USER_ID", "")
 
@@ -275,14 +288,14 @@ def find_deal(parsed, covered):
         for t in a.get("results", []):
             deal_company.setdefault(str(t["toObjectId"]), cid)
     if not deal_company:
-        return None, None, ""
+        return None, None, "", None
     dr = hs("POST", "/crm/v3/objects/deals/batch/read",
             {"properties": ["dealname", "pipeline", "hs_lastmodifieddate", "contract_practices_ods"],
              "inputs": [{"id": x} for x in deal_company]})
     cands = [d for d in dr.get("results", [])
              if d["properties"].get("pipeline") in (PIPELINE_ID, CS_PIPELINE_ID)]
     if not cands:
-        return None, None, ""
+        return None, None, "", None
     cust = norm_name(re.sub(r"\bpcn\b", "", parsed["customer"] or "", flags=re.I))
     def named_for_customer(d):  # "PAID - iGPc PCN" is the PCN's deal; "Oak Vale - Planner" is a member's
         return bool(cust) and cust in norm_name(re.sub(r"\bpcn\b", "", d["properties"].get("dealname") or "", flags=re.I))
@@ -292,7 +305,7 @@ def find_deal(parsed, covered):
                               d["properties"]["pipeline"] != PIPELINE_ID))  # stable: newest first within
     best = cands[0]
     return (str(best["id"]), best["properties"].get("dealname"),
-            best["properties"].get("contract_practices_ods") or "")
+            best["properties"].get("contract_practices_ods") or "", deal_company[str(best["id"])])
 
 
 def hubspot_record_covered(deal_id, deal_name, existing, covered, dry_run):
@@ -312,11 +325,11 @@ def hubspot_record_covered(deal_id, deal_name, existing, covered, dry_run):
     print(f"  HubSpot: contract_practices_ods={merged} on deal '{deal_name}'")
 
 
-def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, dry_run):
+def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, company_id, links, dry_run):
     name = f"contract_{envelope_id}"
     if dry_run:
         print(f"  DRY RUN HubSpot: would upload {name}.pdf and attach to deal "
-              f"{deal_name or 'NOT FOUND'}")
+              f"{deal_name or 'NOT FOUND'} + company {company_id or 'NOT FOUND'}")
         return
     body, ctype = _multipart({"options": json.dumps({"access": "PRIVATE"}),
                               "folderPath": "/contracts"},
@@ -325,35 +338,60 @@ def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, dry_ru
                   headers={"Authorization": f"Bearer {os.environ['HUBSPOT_API_TOKEN']}",
                            "Content-Type": ctype}, raw_body=body)
     file_id = up["id"]
-    if deal_id:
+    body_html = (f"<p><b>Signed contract</b> — {parsed['customer'] or 'customer'} "
+                 f"(DocuSign envelope {envelope_id}), attached by contract sync.</p><ul>"
+                 + "".join(f'<li><a href="{u}">{label}</a></li>' for label, u in links if u) + "</ul>")
+    targets = [(deal_id, 214, f"deal '{deal_name}'"), (company_id, 190, f"company {company_id}")]
+    done = []
+    for obj_id, assoc_type, label in targets:
+        if not obj_id:
+            continue
         hs("POST", "/crm/v3/objects/notes", {
             "properties": {"hs_timestamp": datetime.now(timezone.utc).isoformat(),
-                           "hs_note_body": f"Signed contract (DocuSign envelope {envelope_id}) "
-                                           f"— {parsed['customer'] or 'customer'} — attached by contract sync.",
-                           "hs_attachment_ids": str(file_id)},
-            "associations": [{"to": {"id": deal_id},
+                           "hs_note_body": body_html, "hs_attachment_ids": str(file_id)},
+            "associations": [{"to": {"id": obj_id},
                               "types": [{"associationCategory": "HUBSPOT_DEFINED",
-                                         "associationTypeId": 214}]}]})
-        print(f"  HubSpot: uploaded {name}.pdf + note on deal '{deal_name}'")
-    else:
-        print(f"  HubSpot: uploaded {name}.pdf (no matching deal found — file only)")
+                                         "associationTypeId": assoc_type}]}]})
+        done.append(label)
+    print(f"  HubSpot: uploaded {name}.pdf + note on {', '.join(done) or 'nothing (no deal/company found — file only)'}")
 
 
 # ---------- Notion attach ----------
 
-def notion_attach(pdf, envelope_id, covered, signed_date, dry_run):
+def notion_attach(pdf, envelope_id, covered, signed_date, links, ctx, dry_run):
+    """Every covered practice gets a Recall Practices row (created here from the
+    template if the Notion sync hasn't yet), the signed PDF in "Contract",
+    "Contract Signed", and the HubSpot / DocuSign / Drive links."""
+    enrich, icb_code, deal_id, deal_name, ehr = ctx
     rows = [r for r in fetch_practice_rows() if r["ods"] in covered]
+    missing = sorted(covered - {r["ods"] for r in rows})
+    if missing:
+        template = [] if dry_run else _copy_blocks(NOTION_TEMPLATE_PAGE)
+        for ods in missing:
+            if ods not in enrich:
+                print(f"  WARN: Notion: covered ODS {ods} is not a known practice — no row")
+                continue
+            create_practice_page({"deal_id": deal_id or "", "name": enrich[ods]["name"].title(),
+                                  "ehr": ehr, "ods": ods, "is_pcn": False, "contract_ods": []},
+                                 enrich, icb_code, template, dry_run)
+        rows = [r for r in fetch_practice_rows() if r["ods"] in covered] if not dry_run else rows
     if not rows:
         print("  Notion: no practice rows match the covered ODS codes — nothing attached")
         return
     fname = f"contract_{envelope_id}.pdf"
+    link_props = {"HubSpot Deal": links.get("hubspot"), "DocuSign": links.get("docusign"),
+                  "Contract folder (Drive)": links.get("drive_folder")}
     for row in rows:
         page = notion("GET", f"/pages/{row['page_id']}")
         files = page["properties"].get("Contract", {}).get("files", [])
         if any(f.get("name") == fname for f in files):
+            props = {k: {"url": v} for k, v in link_props.items()
+                     if v and not (page["properties"].get(k) or {}).get("url")}
+            if props and not dry_run:
+                notion("PATCH", f"/pages/{row['page_id']}", {"properties": props})
             continue
         if dry_run:
-            print(f"  DRY RUN Notion: would attach {fname} to {row['name']}")
+            print(f"  DRY RUN Notion: would attach {fname} + links {list(k for k, v in link_props.items() if v)} to {row['name']}")
             continue
         fu = notion("POST", "/file_uploads", {"mode": "single_part", "filename": fname})
         body, ctype = _multipart({}, "file", fname, pdf)
@@ -368,13 +406,14 @@ def notion_attach(pdf, envelope_id, covered, signed_date, dry_run):
                                                 "name": fname}]}}
         if signed_date:
             props["Contract Signed"] = {"date": {"start": signed_date}}
+        props.update({k: {"url": v} for k, v in link_props.items() if v})
         notion("PATCH", f"/pages/{row['page_id']}", {"properties": props})
-        print(f"  Notion: attached {fname} to {row['name']}")
+        print(f"  Notion: attached {fname} + links to {row['name']}")
 
 
 # ---------- finance tracker (Google Sheet) ----------
 
-def _sheets_service():
+def _google(api, version):
     from google.oauth2.service_account import Credentials
     from googleapiclient.discovery import build
     raw = os.environ.get("GOOGLE_SHEETS_SA_JSON", "")
@@ -383,8 +422,56 @@ def _sheets_service():
     else:
         info = json.loads((Path(__file__).resolve().parent.parent / "nhsjobscraper-db905ad21287.json").read_text())
     creds = Credentials.from_service_account_info(
-        info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+        info, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+    return build(api, version, credentials=creds, cache_discovery=False)
+
+
+def _sheets_service():
+    return _google("sheets", "v4")
+
+
+# ---------- Google Drive: T&C Contracts / 2. Signed Contracts (Partners) / <Customer> ----------
+
+def drive_upload(pdf, customer, envelope_id, signed_date, dry_run):
+    """Create (or reuse) the customer's folder under DRIVE_PARENT and put the
+    signed PDF in it. Returns (folder_url, file_url); ("", "") on any failure
+    so Drive never blocks the HubSpot/Notion/sheet steps."""
+    if not customer:
+        return "", ""
+    fname = f"{customer} - Suvera Recall Agreement (signed {signed_date or 'date unknown'}) - {envelope_id}.pdf"
+    try:
+        drv = _google("drive", "v3")
+        q = (f"'{DRIVE_PARENT}' in parents and mimeType='application/vnd.google-apps.folder' "
+             f"and name='{customer.replace(chr(39), chr(92) + chr(39))}' and trashed=false")
+        hits = drv.files().list(q=q, fields="files(id,name,webViewLink)", supportsAllDrives=True,
+                                includeItemsFromAllDrives=True).execute().get("files", [])
+        if hits:
+            folder = hits[0]
+        elif dry_run:
+            print(f"  DRY RUN Drive: would create folder '{customer}' and upload {fname}")
+            return "", ""
+        else:
+            folder = drv.files().create(body={"name": customer, "parents": [DRIVE_PARENT],
+                                              "mimeType": "application/vnd.google-apps.folder"},
+                                        fields="id,name,webViewLink", supportsAllDrives=True).execute()
+        q = f"'{folder['id']}' in parents and name contains '{envelope_id}' and trashed=false"
+        ex = drv.files().list(q=q, fields="files(id,webViewLink)", supportsAllDrives=True,
+                              includeItemsFromAllDrives=True).execute().get("files", [])
+        if ex:
+            print(f"  Drive: {fname} already in '{customer}'")
+            return folder["webViewLink"], ex[0]["webViewLink"]
+        if dry_run:
+            print(f"  DRY RUN Drive: would upload {fname} into existing folder '{customer}'")
+            return folder["webViewLink"], ""
+        from googleapiclient.http import MediaInMemoryUpload
+        f = drv.files().create(body={"name": fname, "parents": [folder["id"]]},
+                               media_body=MediaInMemoryUpload(pdf, mimetype="application/pdf"),
+                               fields="id,webViewLink", supportsAllDrives=True).execute()
+        print(f"  Drive: uploaded {fname} into '{customer}'")
+        return folder["webViewLink"], f["webViewLink"]
+    except Exception as e:
+        print(f"  WARN: Drive skipped — {str(e)[:160]}")
+        return "", ""
 
 
 def _parse_date(s):
@@ -401,7 +488,7 @@ def _parse_date(s):
     return _parse_date(m.group(0)) if m and m.group(0) != s.strip() else None
 
 
-def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no):
+def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links=None):
     """One API/WG row, using the head of finance's own formulas (columns G, H, I
     reference the row) so the tab reads exactly like the manual one."""
     r = row_no
@@ -426,6 +513,9 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no):
     if parsed["sms_included"] is False:
         notes.append("Excludes SMS")
     notes.append(f"Signed {signed.isoformat() if signed else '?'} · DocuSign envelope {envelope_id} · added by contract sync")
+    for label, key in (("HubSpot deal", "hubspot"), ("Contract folder", "drive_folder"), ("DocuSign", "docusign")):
+        if (links or {}).get(key):
+            notes.append(f"{label}: {links[key]}")
     def d(x):
         return x.strftime("%d %b %Y") if x else ""
     return [parsed["customer"] or "", d(comm), f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")', "",
@@ -435,7 +525,7 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no):
             y1, y2, reg or "", " | ".join(notes)]
 
 
-def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run):
+def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links=None):
     try:
         svc = _sheets_service()
     except Exception as e:  # missing key / libs: never block the HubSpot+Notion steps
@@ -451,7 +541,7 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run):
         print(f"  finance sheet: envelope {envelope_id} already on {FINANCE_TAB}")
         return
     row_no = len(existing) + 1
-    row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no)
+    row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links)
     if dry_run:
         print(f"  DRY RUN finance sheet: would append row {row_no}: {row}")
         return
@@ -460,21 +550,33 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run):
     print(f"  finance sheet: row {row_no} added for '{parsed['customer']}'")
 
 
-def process(pdf, envelope_id, signed_date, enrich, dry_run):
+def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
+    """One signed envelope -> Drive folder, HubSpot deal + company, Notion
+    row(s), finance sheet — each carrying links to the others."""
     parsed = parse_contract(pdf)
     covered = resolve_covered_ods(parsed, enrich)
     print(f"  parsed: customer='{parsed['customer']}' ods={parsed['ods_codes']} "
           f"practices={[p['name'] for p in parsed['practices']]} -> covered={sorted(covered)}")
-    deal_id, deal_name, existing = find_deal(parsed, covered)
+    deal_id, deal_name, existing, company_id = find_deal(parsed, covered)
     hubspot_record_covered(deal_id, deal_name, existing, covered, dry_run)
+    folder_url, file_url = drive_upload(pdf, parsed["customer"], envelope_id, signed_date, dry_run)
+    links = {"hubspot": hubspot_deal_url(deal_id) if deal_id else "",
+             "docusign": docusign_url(envelope_id), "drive_folder": folder_url, "drive_file": file_url}
+    ehr = ""
+    if deal_id:
+        ehr = (hs("GET", f"/crm/v3/objects/deals/{deal_id}?properties=ehr_type")
+               .get("properties", {}).get("ehr_type") or "").strip()
     try:
-        hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, dry_run)
+        hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, company_id,
+                       [("DocuSign envelope", links["docusign"]), ("Signed PDF on Drive", file_url),
+                        ("Contract folder on Drive", folder_url)], dry_run)
     except RuntimeError as e:
         if "MISSING_SCOPES" not in str(e):
             raise
         print("  WARN: skipped HubSpot attach — add the Files scope to the private app")
-    notion_attach(pdf, envelope_id, covered, signed_date, dry_run)
-    sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run)
+    notion_attach(pdf, envelope_id, covered, signed_date, links,
+                  (enrich, icb_code, deal_id, deal_name, ehr), dry_run)
+    sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links)
 
 
 def main():
@@ -482,7 +584,7 @@ def main():
     for var in ("HUBSPOT_API_TOKEN", "NOTION_API_TOKEN"):
         if not os.environ.get(var):
             sys.exit(f"{var} not set")
-    enrich, _ = load_enrichment()
+    enrich, icb_code = load_enrichment()
 
     if "--file" in sys.argv:  # local / backfill mode
         pdf = Path(sys.argv[sys.argv.index("--file") + 1]).read_bytes()
@@ -499,10 +601,14 @@ def main():
         if not dry_run and hubspot_has_file(f"contract_{env_id}.pdf"):
             print(f"contract_{env_id}.pdf already in HubSpot — skipping upload, "
                   f"still checking Notion")
-            notion_attach(pdf, env_id, resolve_covered_ods(parse_contract(pdf), enrich),
-                          signed, dry_run)
+            parsed = parse_contract(pdf)
+            covered = resolve_covered_ods(parsed, enrich)
+            deal_id, deal_name, _, _ = find_deal(parsed, covered)
+            links = {"hubspot": hubspot_deal_url(deal_id) if deal_id else "", "docusign": docusign_url(env_id)}
+            notion_attach(pdf, env_id, covered, signed, links,
+                          (enrich, icb_code, deal_id, deal_name, ""), dry_run)
             return
-        process(pdf, env_id, signed, enrich, dry_run)
+        process(pdf, env_id, signed, enrich, icb_code, dry_run)
         return
 
     if not (DS_KEY and DS_USER):
@@ -519,7 +625,7 @@ def main():
         signed = (e.get("completedDateTime") or "")[:10] or None
         print(f"envelope {env_id}: '{e.get('emailSubject', '')}' completed {signed}")
         pdf = ds_download_pdf(token, acct, base, env_id)
-        process(pdf, env_id, signed, enrich, dry_run)
+        process(pdf, env_id, signed, enrich, icb_code, dry_run)
 
 
 if __name__ == "__main__":
