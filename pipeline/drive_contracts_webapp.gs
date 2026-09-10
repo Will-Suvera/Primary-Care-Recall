@@ -44,9 +44,23 @@ function doPost(e) {
                  created: !existing });
 }
 
+// "Wistaria & Milford Surgeries" and "Wistaria and Milford Surgeries" are the
+// same customer: compare folder names loosely before creating a new one.
+function normName(s) {
+  return String(s).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(the|ltd|limited|surgery|surgeries|practice|medical|centre|center|health|group)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
 function findOrCreateFolder(parent, name) {
-  var it = parent.getFoldersByName(name);
-  return it.hasNext() ? it.next() : parent.createFolder(name);
+  var exact = parent.getFoldersByName(name);
+  if (exact.hasNext()) return exact.next();
+  var want = normName(name), it = parent.getFolders();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (normName(f.getName()) === want) return f;
+  }
+  return parent.createFolder(name);
 }
 
 function reply(obj) {
