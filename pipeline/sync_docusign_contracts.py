@@ -7,8 +7,12 @@ on the matching HubSpot deal and to the "Contract" files property of every
 covered Recall Practices row in Notion (setting "Contract Signed" too).
 
 The contract is treated as ground truth for WHICH practices a deal covers —
-Schedule 1's register line names each practice (e.g. "21,978 (The Pall Mall
-Surgery), 15,583 (Highlands Surgery)"), which beats any name-based guessing.
+either Schedule 1's register line ("21,978 (The Pall Mall Surgery), 15,583
+(Highlands Surgery)") or, for PCN master agreements, the "Initial Practices"
+definition. The covered ODS codes are written to the deal's "Contract practices
+(ODS)" property (contract_practices_ods), which sync_notion_recall_practices.py
+then uses to decide which Recall Practices rows to create — so a PCN deal only
+ever produces rows for the practices that actually signed.
 
 Dedupe is stateless: the HubSpot file is named contract_<envelopeId>.pdf; if
 it already exists the envelope is skipped.
@@ -132,6 +136,18 @@ def parse_contract(pdf_bytes):
         out["practices"] = [{"list_size": int(n.replace(",", "")), "name": p.strip()}
                             for n, p in re.findall(r"([\d,]+)\s*\(([^)]+)\)", m.group(1))
                             if not re.search(r"\btotal\b", p, re.I)]
+    # PCN master agreement: '"Initial Practices" means Oak Vale Medical Practice,
+    # West Derby Medical Centre and Rock Court Surgery.' Other members join later
+    # under a Joining Schedule (Schedule 3), each a separate signed envelope.
+    if not out["practices"]:
+        m = re.search(r"[\"\u201c]Initial Practices[\"\u201d]\s+means\s+(.+?)\.\s", text)
+        if m:
+            out["practices"] = [{"list_size": None, "name": n.strip()}
+                                for n in re.split(r",\s*|\s+and\s+", m.group(1)) if n.strip()]
+    if not out["practices"]:
+        m = re.search(r"Joining Schedule.*?Participating Practice\s*:?\s*(.+?)\s+(?:ODS|Practice )?Code", text)
+        if m:
+            out["practices"] = [{"list_size": None, "name": m.group(1).strip()}]
     return out
 
 
@@ -141,6 +157,9 @@ def resolve_covered_ods(parsed, enrich):
     membership of the contract's own ODS code — a closed, safe search space."""
     covered = {c for c in parsed["ods_codes"] if c in enrich}
     pcn_codes = {enrich[c]["pcn_code"] for c in covered if enrich[c].get("pcn_code")}
+    # a PCN's own U-code in the contract scopes the name search to its members
+    all_pcn = {p.get("pcn_code") for p in enrich.values() if p.get("pcn_code")}
+    pcn_codes |= {c for c in parsed["ods_codes"] if c in all_pcn}
     members = {ods: p for ods, p in enrich.items() if p.get("pcn_code") in pcn_codes}
     for pr in parsed["practices"]:
         n = norm_name(pr["name"])
@@ -182,36 +201,74 @@ def hubspot_has_file(name):
         raise
 
 
-def hubspot_attach(pdf, envelope_id, parsed, covered, dry_run):
-    name = f"contract_{envelope_id}"
-    # primary deal: covered-ODS companies' deals, or the customer-named company's
-    deal_id, deal_name = None, None
-    filters = [{"filters": [{"propertyName": p, "operator": "IN", "values": sorted(covered)}]}
-               for p in ("ods_unique", "practice_code")] if covered else []
+def find_deal(parsed, covered):
+    """The HubSpot deal this contract belongs to: prefer a deal on the company
+    named as Customer (the PCN itself for a master agreement), then a covered
+    practice's deal; Planner pipeline before Client Success; newest first.
+    Returns (deal_id, deal_name, contract_practices_ods) or (None, None, "")."""
+    # the Customer company: matched by the contract's own ODS code(s) (a PCN's
+    # U-code sits in the company's ods_unique) and, as a fallback, by name
+    groups = [{"filters": [{"propertyName": p, "operator": "IN", "values": parsed["ods_codes"]}]}
+              for p in ("ods_unique", "practice_code")] if parsed["ods_codes"] else []
     if parsed["customer"]:
-        filters.append({"filters": [{"propertyName": "name", "operator": "EQ",
-                                     "value": parsed["customer"]}]})
-    comp_ids = []
-    if filters:
+        groups.append({"filters": [{"propertyName": "name", "operator": "EQ",
+                                    "value": parsed["customer"]}]})
+    cust_comp_ids = set()
+    if groups:
+        r = hs("POST", "/crm/v3/objects/companies/search", {"filterGroups": groups, "limit": 20})
+        cust_comp_ids = {str(c["id"]) for c in r.get("results", [])}
+    comp_ids = set(cust_comp_ids)
+    if covered:
         r = hs("POST", "/crm/v3/objects/companies/search",
-               {"filterGroups": filters, "limit": 100})
-        comp_ids = [str(c["id"]) for c in r.get("results", [])]
-    deals = []
+               {"filterGroups": [{"filters": [{"propertyName": p, "operator": "IN",
+                                               "values": sorted(covered)}]}
+                                 for p in ("ods_unique", "practice_code")], "limit": 100})
+        comp_ids |= {str(c["id"]) for c in r.get("results", [])}
+    deal_company = {}
     for cid in comp_ids:
         a = hs("GET", f"/crm/v4/objects/companies/{cid}/associations/deals")
         for t in a.get("results", []):
-            deals.append(str(t["toObjectId"]))
-    if deals:
-        dr = hs("POST", "/crm/v3/objects/deals/batch/read",
-                {"properties": ["dealname", "pipeline", "hs_lastmodifieddate"],
-                 "inputs": [{"id": x} for x in dict.fromkeys(deals)]})
-        cands = [d for d in dr.get("results", [])
-                 if d["properties"].get("pipeline") in (PIPELINE_ID, CS_PIPELINE_ID)]
-        cands.sort(key=lambda d: (d["properties"]["pipeline"] != PIPELINE_ID,
-                                  d["properties"].get("hs_lastmodifieddate") or ""), )
-        if cands:
-            deal_id = str(cands[0]["id"])
-            deal_name = cands[0]["properties"].get("dealname")
+            deal_company.setdefault(str(t["toObjectId"]), cid)
+    if not deal_company:
+        return None, None, ""
+    dr = hs("POST", "/crm/v3/objects/deals/batch/read",
+            {"properties": ["dealname", "pipeline", "hs_lastmodifieddate", "contract_practices_ods"],
+             "inputs": [{"id": x} for x in deal_company]})
+    cands = [d for d in dr.get("results", [])
+             if d["properties"].get("pipeline") in (PIPELINE_ID, CS_PIPELINE_ID)]
+    if not cands:
+        return None, None, ""
+    cust = norm_name(re.sub(r"\bpcn\b", "", parsed["customer"] or "", flags=re.I))
+    def named_for_customer(d):  # "PAID - iGPc PCN" is the PCN's deal; "Oak Vale - Planner" is a member's
+        return bool(cust) and cust in norm_name(re.sub(r"\bpcn\b", "", d["properties"].get("dealname") or "", flags=re.I))
+    cands.sort(key=lambda d: d["properties"].get("hs_lastmodifieddate") or "", reverse=True)
+    cands.sort(key=lambda d: (deal_company[str(d["id"])] not in cust_comp_ids,
+                              not named_for_customer(d),
+                              d["properties"]["pipeline"] != PIPELINE_ID))  # stable: newest first within
+    best = cands[0]
+    return (str(best["id"]), best["properties"].get("dealname"),
+            best["properties"].get("contract_practices_ods") or "")
+
+
+def hubspot_record_covered(deal_id, deal_name, existing, covered, dry_run):
+    """Write the covered ODS codes to the deal's "Contract practices (ODS)" —
+    a union with what's there, so a later Joining Schedule adds a practice."""
+    if not deal_id or not covered:
+        return
+    have = {c.strip().upper() for c in re.split(r"[,\s]+", existing) if c.strip()}
+    merged = sorted(have | set(covered))
+    if merged == sorted(have):
+        return
+    if dry_run:
+        print(f"  DRY RUN HubSpot: would set contract_practices_ods={merged} on deal '{deal_name}'")
+        return
+    hs("PATCH", f"/crm/v3/objects/deals/{deal_id}",
+       {"properties": {"contract_practices_ods": ", ".join(merged)}})
+    print(f"  HubSpot: contract_practices_ods={merged} on deal '{deal_name}'")
+
+
+def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, dry_run):
+    name = f"contract_{envelope_id}"
     if dry_run:
         print(f"  DRY RUN HubSpot: would upload {name}.pdf and attach to deal "
               f"{deal_name or 'NOT FOUND'}")
@@ -275,8 +332,10 @@ def process(pdf, envelope_id, signed_date, enrich, dry_run):
     covered = resolve_covered_ods(parsed, enrich)
     print(f"  parsed: customer='{parsed['customer']}' ods={parsed['ods_codes']} "
           f"practices={[p['name'] for p in parsed['practices']]} -> covered={sorted(covered)}")
+    deal_id, deal_name, existing = find_deal(parsed, covered)
+    hubspot_record_covered(deal_id, deal_name, existing, covered, dry_run)
     try:
-        hubspot_attach(pdf, envelope_id, parsed, covered, dry_run)
+        hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, dry_run)
     except RuntimeError as e:
         if "MISSING_SCOPES" not in str(e):
             raise

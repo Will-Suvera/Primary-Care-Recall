@@ -24,12 +24,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Sync to Notion
-        env:
-          HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
-          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
-        run: python3 pipeline/sync_notion_recall_practices.py
+      # Contracts first: the DocuSign step writes "Contract practices (ODS)" on
+      # the deal, which the Notion step then uses to decide which rows to create.
+      # continue-on-error so a DocuSign outage/auth problem never blocks Notion.
       - name: Import signed DocuSign contracts
+        continue-on-error: true
         env:
           HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
           NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
@@ -40,3 +39,8 @@ jobs:
         run: |
           pip install -q cryptography pypdf
           python3 pipeline/sync_docusign_contracts.py
+      - name: Sync to Notion
+        env:
+          HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+        run: python3 pipeline/sync_notion_recall_practices.py

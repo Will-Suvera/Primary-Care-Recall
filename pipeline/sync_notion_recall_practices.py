@@ -12,6 +12,13 @@ from practices_geocoded.json + the ODS API, and the "New Recall Practice"
 template content copied into the page body (the Notion API cannot apply
 templates natively). Existing rows are never modified — creation only.
 
+Which practices a deal covers comes from the signed contract: the deal's
+"Contract practices (ODS)" property (contract_practices_ods), written by
+sync_docusign_contracts.py from Schedule 1 / the Initial Practices definition
+(or filled by hand when a contract was signed outside DocuSign). A deal with
+that property expands to one row per listed practice. A PCN-level deal WITHOUT
+it is left alone (with a WAIT line in the log) rather than guessed at.
+
 Env: HUBSPOT_API_TOKEN, NOTION_API_TOKEN.  --dry-run prints without creating.
 """
 import json
@@ -106,7 +113,7 @@ def fetch_stage_deals():
         body = {"filterGroups": [{"filters": [
                     {"propertyName": "pipeline", "operator": "EQ", "value": PIPELINE_ID},
                     {"propertyName": "dealstage", "operator": "EQ", "value": DPA_SIGNED_STAGE}]}],
-                "properties": ["dealname", "ehr_type"], "limit": 100}
+                "properties": ["dealname", "ehr_type", "contract_practices_ods"], "limit": 100}
         if after:
             body["after"] = after
         r = hs("POST", "/crm/v3/objects/deals/search", body)
@@ -144,64 +151,26 @@ def fetch_stage_deals():
                     "name": clean_deal_name(p.get("dealname") or ""),
                     "ehr": (p.get("ehr_type") or "").strip(),
                     "ods": comp2ods.get(cid, ""),
-                    "is_pcn": comp_is_pcn.get(cid, False)})
+                    "is_pcn": comp_is_pcn.get(cid, False),
+                    "contract_ods": [c.strip().upper() for c in
+                                     re.split(r"[,\s]+", p.get("contract_practices_ods") or "")
+                                     if c.strip()]})
     return out
 
 
-def fetch_pipeline_ods():
-    """ODS codes of every practice with a deal anywhere in the Planner pipeline —
-    used to decide which PCN members count as signed when a PCN-level deal lands."""
-    ids = []
-    # Planner pipeline + Client Success pipeline (signed practices can sit in
-    # either — e.g. a PCN member whose own deal went straight to Client Success)
-    for pipeline in (PIPELINE_ID, "2391616730"):
-        after = None
-        while True:
-            body = {"filterGroups": [{"filters": [
-                        {"propertyName": "pipeline", "operator": "EQ", "value": pipeline}]}],
-                    "limit": 100}
-            if after:
-                body["after"] = after
-            r = hs("POST", "/crm/v3/objects/deals/search", body)
-            ids += [str(d["id"]) for d in r.get("results", [])]
-            after = r.get("paging", {}).get("next", {}).get("after")
-            if not after:
-                break
-    comp_ids = set()
-    for i in range(0, len(ids), 100):
-        assoc = hs("POST", "/crm/v4/associations/deals/companies/batch/read",
-                   {"inputs": [{"id": x} for x in ids[i:i + 100]]})
-        for r in assoc.get("results", []):
-            comp_ids |= {str(t["toObjectId"]) for t in r.get("to", [])}
-    out = set()
-    comp_ids = list(comp_ids)
-    for i in range(0, len(comp_ids), 100):
-        cr = hs("POST", "/crm/v3/objects/companies/batch/read",
-                {"properties": ["ods_unique", "practice_code"],
-                 "inputs": [{"id": x} for x in comp_ids[i:i + 100]]})
-        for r in cr.get("results", []):
-            pr = r.get("properties", {})
-            ods = (pr.get("ods_unique") or pr.get("practice_code") or "").strip().upper()
-            if ods:
-                out.add(ods)
+def expand_contract_deal(deal, enrich):
+    """One pseudo-deal per practice named in the signed contract (the deal's
+    contract_practices_ods). Codes not in the practice directory are reported
+    and skipped rather than guessed."""
+    out = []
+    for ods in deal["contract_ods"]:
+        p = enrich.get(ods)
+        if not p:
+            print(f"  WARN: contract ODS {ods} on '{deal['name']}' is not a known practice — skipped")
+            continue
+        out.append({"deal_id": deal["deal_id"], "name": p["name"].title(), "ehr": deal["ehr"],
+                    "ods": ods, "is_pcn": False, "contract_ods": []})
     return out
-
-
-def expand_pcn_deal(deal, enrich, signed):
-    """A PCN-level deal covers whichever member practices have actually signed.
-    Members come from the ODS ePCN data (pcn_name match on the deal/company name);
-    "signed" = on the waitlist/live lists OR holding their own Planner-pipeline deal.
-    Returns per-practice pseudo-deals; empty list means we couldn't expand safely."""
-    n = norm_name(re.sub(r"\bpcn\b", "", deal["name"], flags=re.I))
-    pcn_codes = {p["pcn_code"] for p in enrich.values()
-                 if p.get("pcn_code") and norm_name(re.sub(r"\bpcn\b", "", p.get("pcn_name") or "", flags=re.I)) == n}
-    if len(pcn_codes) != 1:
-        return []
-    code = pcn_codes.pop()
-    members = [(ods, p) for ods, p in enrich.items() if p.get("pcn_code") == code]
-    return [{"deal_id": deal["deal_id"], "name": p["name"].title(), "ehr": deal["ehr"],
-             "ods": ods, "is_pcn": False}
-            for ods, p in members if ods in signed]
 
 
 # ---------- enrichment: ODS -> PCN / ICB ----------
@@ -457,9 +426,16 @@ def main():
     print(f"{len(ods_seen)} ODS codes / {len(names_seen)} names already in Notion")
     enrich, icb_code = load_enrichment()
 
-    missing = [d for d in deals
-               if not (d["ods"] and d["ods"] in ods_seen)
-               and not name_taken(norm_name(d["name"]), names_seen)]
+    def row_exists(d):
+        """A deal with an ODS code is matched on the code (plus an exact name, to
+        survive old rows without codes); the loose token-subset name match is
+        only for deals with no code at all — it swallowed "Oak Vale" into "The
+        Vale" (2026-09-10)."""
+        if d["ods"]:
+            return d["ods"] in ods_seen or norm_name(d["name"]) in names_seen
+        return name_taken(norm_name(d["name"]), names_seen)
+
+    missing = [d for d in deals if not row_exists(d)]
     if not missing:
         print("Nothing to create — Notion is in sync.")
         link_meetings(fetch_practice_rows(), enrich, icb_code, dry_run)
@@ -467,23 +443,22 @@ def main():
 
     signed = load_signed_set()
 
-    # PCN-level deals expand to their signed member practices (one row each);
-    # a PCN we can't safely expand falls through as a single umbrella row.
-    expanded, pipeline_ods = [], None
+    # The signed contract decides coverage: a deal carrying contract_practices_ods
+    # expands to one row per listed practice. A PCN-level deal without it waits
+    # for the DocuSign sync (or a hand-filled property) — never guessed.
+    expanded = []
     for d in missing:
+        if d["contract_ods"]:
+            members = expand_contract_deal(d, enrich)
+            print(f"  deal '{d['name']}' -> {len(members)} practice(s) from the signed contract")
+            expanded += members
+            continue
         if d["is_pcn"] or (not d["ods"] and re.search(r"\bpcn\b", d["name"], re.I)):
-            if pipeline_ods is None:
-                pipeline_ods = fetch_pipeline_ods()
-            members = expand_pcn_deal(d, enrich, signed | pipeline_ods)
-            if members:
-                print(f"  PCN deal '{d['name']}' -> {len(members)} signed member practice(s)")
-                expanded += members
-                continue
-            print(f"  WARN: couldn't expand PCN deal '{d['name']}' — creating umbrella row")
+            print(f"  WAIT: PCN deal '{d['name']}' has no 'Contract practices (ODS)' yet — "
+                  "rows are created once the signed contract is parsed (or fill the property by hand)")
+            continue
         expanded.append(d)
-    missing = [d for d in expanded
-               if not (d["ods"] and d["ods"] in ods_seen)
-               and not name_taken(norm_name(d["name"]), names_seen)]
+    missing = [d for d in expanded if not row_exists(d)]
     if not missing:
         print("Nothing to create after PCN expansion.")
     else:
