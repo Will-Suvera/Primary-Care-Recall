@@ -13,9 +13,47 @@
  */
 var DEFAULT_PARENT = '1M8tBbnYdgVDHtKuFrmhDy1dz0II6sCZF';
 
-function doGet() {
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, service: 'suvera-contract-filer' }))
-    .setMimeType(ContentService.MimeType.JSON);
+/**
+ * GET ?action=list&secret=…      -> DocuSign "Completed:" emails from the last 60 days
+ *                                   (id, subject, date, attachment names)
+ * GET ?action=fetch&secret=…&msg=<id> -> that email's contract PDF + DocuSign Summary
+ *                                   certificate, base64 (the sync reads the envelope
+ *                                   id from the Summary and runs the full chain)
+ * GET (no action)                -> health check
+ */
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  if (!p.action) {
+    return reply({ ok: true, service: 'suvera-contract-filer' });
+  }
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('SECRET') || p.secret !== props.getProperty('SECRET')) {
+    return reply({ error: 'unauthorised' });
+  }
+  if (p.action === 'list') {
+    var out = [];
+    var threads = GmailApp.search('from:docusign.net subject:"Completed:" newer_than:60d', 0, 40);
+    threads.forEach(function (t) {
+      t.getMessages().forEach(function (m) {
+        if (m.getFrom().indexOf('docusign.net') === -1 || m.getSubject().indexOf('Completed:') !== 0) return;
+        var names = m.getAttachments().map(function (a) { return a.getName(); });
+        if (!names.some(function (n) { return /\.pdf$/i.test(n) && n !== 'Summary.pdf'; })) return;
+        out.push({ id: m.getId(), subject: m.getSubject(), date: m.getDate().toISOString(), attachments: names });
+      });
+    });
+    return reply({ messages: out });
+  }
+  if (p.action === 'fetch' && p.msg) {
+    var msg = GmailApp.getMessageById(p.msg);
+    var res = { id: msg.getId(), subject: msg.getSubject(), date: msg.getDate().toISOString(), pdf_base64: '', summary_base64: '', filename: '' };
+    msg.getAttachments().forEach(function (a) {
+      if (!/\.pdf$/i.test(a.getName())) return;
+      if (a.getName() === 'Summary.pdf') res.summary_base64 = Utilities.base64Encode(a.getBytes());
+      else if (!res.pdf_base64) { res.pdf_base64 = Utilities.base64Encode(a.getBytes()); res.filename = a.getName(); }
+    });
+    return reply(res);
+  }
+  return reply({ error: 'unknown action' });
 }
 
 function doPost(e) {

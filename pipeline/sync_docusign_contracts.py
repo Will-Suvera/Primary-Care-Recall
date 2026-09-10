@@ -27,8 +27,13 @@ finance's manual tab): legal name, commencement, term, price per patient,
 register, ARR and the finance formulas for monthly / first-invoice values.
 Auth: GOOGLE_SHEETS_SA_JSON (service-account JSON) or the repo-root key file.
 
+Sources, in order: (1) the DocuSign "Completed:" emails in Will's inbox, read
+through the Apps Script web app (DRIVE_WEBAPP_URL, action=list/fetch) — works
+without any DocuSign API access, the certified PDF + Summary certificate are the
+email attachments; (2) the DocuSign API poll, when its credentials work.
+
 Modes:
-  (default)                 poll DocuSign for envelopes completed in the last 30 days (--days N)
+  (default)                 process new completed contracts from the sources above (--days N for the API poll)
   --file X.pdf --envelope-id ID [--signed YYYY-MM-DD]   process a local PDF (testing / backfill)
   --sheet-only              with --file: only write the finance-sheet row
   --drive-only              with --file: file the PDF on Drive and refresh the Drive links
@@ -41,6 +46,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -692,6 +698,55 @@ def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
     sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links)
 
 
+def is_recall_contract(parsed):
+    """Only Recall / Planner agreements go through the chain — DocuSign also
+    completes DPAs, change orders and investment paperwork."""
+    return bool(parsed["customer"] and parsed["ods_codes"]
+                and (parsed["register"] or parsed["price_y1"] or parsed["annual_fee"]))
+
+
+def _webapp_get(params):
+    url = os.environ["DRIVE_WEBAPP_URL"] + "?" + urllib.parse.urlencode(
+        dict(params, secret=os.environ.get("DRIVE_WEBAPP_SECRET", "")))
+    with urllib.request.urlopen(url, timeout=120) as r:
+        res = json.loads(r.read())
+    if res.get("error"):
+        raise RuntimeError(res["error"])
+    return res
+
+
+def process_gmail_completions(enrich, icb_code, dry_run):
+    """Every DocuSign 'Completed:' email (via the web app) whose contract PDF is a
+    Recall agreement not yet in HubSpot -> the full chain."""
+    msgs = _webapp_get({"action": "list"}).get("messages", [])
+    print(f"{len(msgs)} DocuSign completion email(s) in the last 60 days")
+    for m in sorted(msgs, key=lambda x: x["date"]):
+        subj = m.get("subject", "")
+        if not re.search(r"recall|planner", subj, re.I):
+            continue
+        f = _webapp_get({"action": "fetch", "msg": m["id"]})
+        if not f.get("pdf_base64"):
+            continue
+        pdf = base64.b64decode(f["pdf_base64"])
+        env_id = ""
+        if f.get("summary_base64"):
+            from pypdf import PdfReader
+            import io
+            cert = " ".join((pg.extract_text() or "") for pg in
+                            PdfReader(io.BytesIO(base64.b64decode(f["summary_base64"]))).pages)
+            env_id = (re.findall(r"Envelope Id:\s*([0-9A-Fa-f-]{36})", cert) or [""])[0].upper()
+        env_id = env_id or f"gmail-{m['id']}"
+        if hubspot_has_file(f"contract_{env_id}.pdf"):
+            continue
+        parsed = parse_contract(pdf)
+        if not is_recall_contract(parsed):
+            print(f"skipping '{subj[:70]}' — not a Recall agreement")
+            continue
+        signed = (m.get("date") or "")[:10] or None
+        print(f"email {m['id']}: '{subj[:80]}' completed {signed} -> envelope {env_id}")
+        process(pdf, env_id, signed, enrich, icb_code, dry_run)
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
     for var in ("HUBSPOT_API_TOKEN", "NOTION_API_TOKEN"):
@@ -727,9 +782,21 @@ def main():
         process(pdf, env_id, signed, enrich, icb_code, dry_run)
         return
 
+    if os.environ.get("DRIVE_WEBAPP_URL"):
+        try:
+            process_gmail_completions(enrich, icb_code, dry_run)
+        except Exception as e:
+            print(f"WARN: Gmail completions via web app failed — {str(e)[:200]}")
+    else:
+        print("DRIVE_WEBAPP_URL not set — skipping the Gmail completions source")
+
     if not (DS_KEY and DS_USER):
         sys.exit("DocuSign env vars not set")
-    token = ds_token()
+    try:
+        token = ds_token()
+    except (SystemExit, RuntimeError) as e:
+        print(f"DocuSign API source unavailable ({str(e)[:120]}) — Gmail source already run")
+        return
     acct, base = ds_account(token)
     days = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 30
     envs = ds_completed_envelopes(token, acct, base, days)
