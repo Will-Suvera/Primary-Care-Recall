@@ -159,7 +159,8 @@ def parse_contract(pdf_bytes):
     text = re.sub(r"\s+", " ", text)
     out = {"customer": "", "ods_codes": [], "practices": [], "commencement": "",
            "term_months": None, "price_y1": None, "price_y2": None, "register": None,
-           "annual_fee": None, "annual_fee_y2": None, "sms_included": None}
+           "annual_fee": None, "annual_fee_y2": None, "sms_included": None,
+           "term_end": "", "free_until": ""}
     m = re.search(r"Customer Details\s+Customer\s+(.+?)\s+Customer Address", text)
     if m:
         out["customer"] = m.group(1).strip()
@@ -170,15 +171,24 @@ def parse_contract(pdf_bytes):
     if m:
         v = m.group(1).strip()
         out["commencement"] = "" if ("@" in v or not v) else v[:160]  # a mis-keyed email is not a date
-    m = (re.search(r"[Ii]nitial [Tt]erm (?:of|is) (\d+) months", text)
+    m = (re.search(r"then a (\d+)-month paid term", text)
+         or re.search(r"[Ii]nitial [Tt]erm (?:of|is) (\d+) months", text)
          or re.search(r"Initial Term\s+(\d+) months", text)
          or re.search(r"[Ii]nitial [Tt]erm (?:of|is) (\d+) years?", text))
     if m:
         n = int(m.group(1))
         out["term_months"] = n * 12 if "year" in m.group(0) else n
+    m = re.search(r"Initial Term\s+From the Commencement Date until (\d{1,2} \w+ \d{4})", sched)
+    if m:
+        out["term_end"] = m.group(1)  # pro-rated term (e.g. to 31 March); months worked out later
+    m = re.search(r"Free Period\s+\d{1,2} \w+ \d{4} to (\d{1,2} \w+ \d{4})", sched)
+    if m:
+        out["free_until"] = m.group(1)
     # "£0.60 + VAT Y1 & £0.65 + VAT Y2 per patient" / "£0.75 + VAT per patient" /
     # "£ 0.75 0.55 VAT per patient" (struck-through list price, then the agreed one)
-    m = re.search(r"£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y1\s*&\s*£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y2", text)
+    m = (re.search(r"£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y1\s*&\s*£\s?(\d\.\d{2,4})\s*\+?\s*VAT\s*Y2", text)
+         or re.search(r"£\s?(\d\.\d{2,4})\s*(?:in Y1|per patient in Year 1|\+ VAT per patient[^£]{0,40}year one)"
+                      r"\s*and\s*£\s?(\d\.\d{2,4})", text))
     if m:
         out["price_y1"], out["price_y2"] = float(m.group(1)), float(m.group(2))
     else:
@@ -193,21 +203,26 @@ def parse_contract(pdf_bytes):
          or re.search(r"Register Size[^\d]{0,80}([\d,]{4,})", text))
     if m:
         out["register"] = int(m.group(1).replace(",", ""))
-    m = re.search(r"(?:Annual Fee|an indicative)[^£]{0,60}£\s?([\d,]+(?:\.\d+)?)"
-                  r"(?:\s*(?:Y1|year 1)\s*,\s*£\s?([\d,]+(?:\.\d+)?)\s*(?:Y2|year 2))?", text)
+    m = (re.search(r"(?<!Total )Annual Fee \(exc\. VAT\)[^£]{0,60}£\s?([\d,]+(?:\.\d+)?)"
+                   r"(?:\s*(?:Y1|year 1)?\s*(?:,|//)\s*£\s?([\d,]+(?:\.\d+)?)\s*(?:Y2|year 2)?)?", text)
+         or re.search(r"Year 1 Fee \(exc\. VAT\)[^—]{0,40}—\s*£([\d,]+(?:\.\d+)?) per year"
+                      r"(?:.{0,80}?Year 2 Fee \(exc\. VAT\)[^—]{0,40}—\s*£([\d,]+(?:\.\d+)?) per year)?", text)
+         or re.search(r"an indicative £\s?([\d,]+(?:\.\d+)?)()", text))
     if m:
         out["annual_fee"] = float(m.group(1).replace(",", ""))
         if m.group(2):
             out["annual_fee_y2"] = float(m.group(2).replace(",", ""))
     if re.search(r"SMS", text):
-        out["sms_included"] = bool(re.search(r"(?:unlimited[^.]{0,40}SMS|SMS[^.]{0,60}included)", text, re.I))
+        out["sms_included"] = not re.search(r"SMS\s+Not included|Excludes SMS|SMS[^.]{0,30}not included", text, re.I)
     out["ods_codes"] = [c for c in dict.fromkeys(ODS_RE.findall(text)) if c not in SUVERA_ODS]
     # register line: "21,978 (The Pall Mall Surgery), 15,583 (Highlands Surgery) 37,561 total"
     m = re.search(r"Register Size.*?Date\s*\)\s*(.+?)(?:Annual Fee|SIGNED)", text)
     if m:
-        out["practices"] = [{"list_size": int(n.replace(",", "")), "name": p.strip()}
-                            for n, p in re.findall(r"([\d,]+)\s*\(([^)]+)\)", m.group(1))
-                            if not re.search(r"\btotal\b", p, re.I)]
+        found = [{"list_size": int(n.replace(",", "")), "name": p.strip()}
+                 for n, p in re.findall(r"([\d,]{4,})\s*\(([A-Za-z][^)]+)\)", m.group(1))
+                 if not re.search(r"\btotal\b|£|approximate|pcm", p, re.I)]
+        if len(found) >= 2 or re.search(r"\btotal\b", m.group(1)):
+            out["practices"] = found
     # PCN master agreement: '"Initial Practices" means Oak Vale Medical Practice,
     # West Derby Medical Centre and Rock Court Surgery.' Other members join later
     # under a Joining Schedule (Schedule 3), each a separate signed envelope.
@@ -522,7 +537,7 @@ def _parse_date(s, year_hint=None):
     if not s:
         return None
     s = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", s)
-    s = re.sub(r"\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b,?\s*", "", s)
+    s = re.sub(r"\b(Mon|Monday|Tue|Tues|Tuesday|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday)\b,?\s*", "", s)
     s = s.replace(",", " ").strip()
     s = re.sub(r"\s+", " ", s)
     for fmt in ("%d %B %Y", "%d %b %Y", "%d/%m/%Y", "%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%B %d %Y"):
@@ -545,11 +560,17 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links
     r = row_no
     signed = _parse_date(signed_date) if signed_date else None
     comm = _parse_date(parsed["commencement"], signed.year if signed else None) or signed
-    years = round(parsed["term_months"] / 12, 4) if parsed["term_months"] else ""
+    months = parsed["term_months"]
+    term_end = _parse_date(parsed["term_end"])
+    if not months and term_end and comm:
+        months = round((term_end - comm).days / 30.44)  # e.g. 3 Sep 2026 -> 31 Mar 2027 = 7
+    years = round(months / 12, 4) if months else ""
     p1, p2, reg = parsed["price_y1"], parsed["price_y2"], parsed["register"]
     if not reg and covered:
         reg = sum(int(enrich[c].get("patients") or 0) for c in covered if c in enrich) or None
     y1 = parsed["annual_fee"] or (round(reg * p1, 2) if reg and p1 else "")
+    if years and years < 1 and reg and p1:
+        y1 = round(reg * p1 * years, 2)  # pro-rated first (short) term; ARR formula annualises it
     y2 = (parsed["annual_fee_y2"] or (round(reg * p2, 2) if reg and p2 else None)
           or ("auto-renews (same rate)" if years and years <= 1 else (y1 if years and years > 1 else "")))
     ppp = f"{p1} Y1 / {p2} Y2" if p1 and p2 and p2 != p1 else (p1 if p1 else "")
@@ -564,6 +585,11 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links
                      + ("" if _parse_date(parsed["commencement"]) else " (signed date used)"))
     if parsed["sms_included"] is False:
         notes.append("Excludes SMS")
+    free_until = _parse_date(parsed["free_until"])
+    if free_until:
+        notes.append(f"Free period to {free_until.strftime('%d %b %Y')}; fees from the next day")
+    if term_end:
+        notes.append(f"Initial term runs to {term_end.strftime('%d %b %Y')}")
     if "--note" in sys.argv:
         notes.append(sys.argv[sys.argv.index("--note") + 1])
     notes.append(f"Signed {signed.isoformat() if signed else '?'} · DocuSign envelope {envelope_id} · added by contract sync")
@@ -575,7 +601,9 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links
     L = links or {}
     pdf_link = (f'=HYPERLINK("{L["drive_file"]}","Open PDF (Drive)")' if L.get("drive_file") else
                 f'=HYPERLINK("{L["hubspot"]}","Open deal (HubSpot)")' if L.get("hubspot") else "")
-    return [parsed["customer"] or "", d(comm), f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")', "",
+    first_rev = (f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")' if not free_until
+                 else (free_until + timedelta(days=1)).strftime("%b-%y"))
+    return [parsed["customer"] or "", d(comm), first_rev, "",
             years, ppp, f"=IF(ISNUMBER(J{r}),ROUND(J{r}/12,2),\"\")",
             f'=IF(ISNUMBER(D{r}),ROUND(ROUNDUP((D{r}-B{r})/31,0)*G{r},2),"")',
             f'=IF(AND(ISNUMBER(J{r}),ISNUMBER(E{r})),J{r}/MIN(1,E{r}),"")',
