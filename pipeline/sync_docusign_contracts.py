@@ -63,6 +63,11 @@ DRIVE_PARENT = "1M8tBbnYdgVDHtKuFrmhDy1dz0II6sCZF"  # T&C Contracts / 2. Signed 
 
 CS_PIPELINE_ID = "2391616730"
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
+# Completed envelopes that must NOT go through the chain (superseded contracts etc.)
+SKIP_ENVELOPES = {
+    "25AF8383-EB47-84BD-8258-6572211150DC": "Pall Mall-only agreement (24 Aug 2026) superseded by the "
+                                            "SS9 South PCN agreement E8CD90D5 (3 Sep 2026) covering both practices",
+}
 ODS_RE = re.compile(r"\b[A-Z]\d[0-9A-Z]{4,5}\b")
 
 FINANCE_SHEET_ID = "1js7pGfDnyOdyq5fRPetXflEAx94SUmnltkfO-lAvOSc"  # Primary/Recall Contracts
@@ -637,15 +642,22 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, lin
     # SUM/AVERAGE ranges, which end on the blank row) shift down and expand.
     summary_at = next((i + 1 for i, row in enumerate(existing)
                        if len(row) > 5 and str(row[5]).strip() == "MRR"), None)
-    if summary_at:
+    # A row for the same customer that came from an uncertified copy (envelope
+    # "drive-…" / "DRAFT…") is replaced in place by the DocuSign original.
+    replace_at = next((i + 1 for i, row in enumerate(existing[1:], start=1)
+                       if row and norm_name(str(row[0])) == norm_name(parsed["customer"] or "")
+                       and len(row) >= 13 and not re.search(r"envelope [0-9A-F]{8}-", row[12])), None)
+    if replace_at:
+        row_no = replace_at
+    elif summary_at:
         row_no = summary_at - 1  # the blank gap row
     else:
         row_no = max((i + 1 for i, row in enumerate(existing) if row and str(row[0]).strip()), default=1) + 1
     row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links)
     if dry_run:
-        print(f"  DRY RUN finance sheet: would {'insert' if summary_at else 'append'} row {row_no}: {row}")
+        print(f"  DRY RUN finance sheet: would {'replace' if replace_at else 'insert' if summary_at else 'append'} row {row_no}: {row}")
         return
-    if summary_at:
+    if summary_at and not replace_at:
         svc.spreadsheets().batchUpdate(spreadsheetId=FINANCE_SHEET_ID, body={"requests": [
             {"insertDimension": {"range": {"sheetId": FINANCE_TAB_GID, "dimension": "ROWS",
                                            "startIndex": row_no - 1, "endIndex": row_no},
@@ -750,7 +762,7 @@ def process_gmail_completions(enrich, icb_code, dry_run):
                             PdfReader(io.BytesIO(base64.b64decode(f["summary_base64"]))).pages)
             env_id = (re.findall(r"Envelope Id:\s*([0-9A-Fa-f-]{36})", cert) or [""])[0].upper()
         env_id = env_id or f"gmail-{m['id']}"
-        if hubspot_has_file(f"contract_{env_id}.pdf"):
+        if env_id in SKIP_ENVELOPES or hubspot_has_file(f"contract_{env_id}.pdf"):
             continue
         parsed = parse_contract(pdf)
         if not is_recall_contract(parsed):
@@ -814,14 +826,26 @@ def main():
     acct, base = ds_account(token)
     days = int(sys.argv[sys.argv.index("--days") + 1]) if "--days" in sys.argv else 30
     envs = ds_completed_envelopes(token, acct, base, days)
+    only = sys.argv[sys.argv.index("--envelope") + 1].lower() if "--envelope" in sys.argv else None
     print(f"{len(envs)} completed envelope(s) in the last {days} days ({DS_AUTH})")
     for e in envs:
-        env_id = e["envelopeId"]
+        env_id = e["envelopeId"].upper()  # HubSpot file names / sheet notes use upper-case ids
+        if only and env_id.lower() != only:
+            continue
+        subj = e.get("emailSubject", "")
+        if not only and not re.search(r"recall|planner", subj, re.I):
+            continue  # employment contracts, DPAs, change orders, HR paperwork
+        if env_id in SKIP_ENVELOPES:
+            continue
         if hubspot_has_file(f"contract_{env_id}.pdf"):
             continue
         signed = (e.get("completedDateTime") or "")[:10] or None
-        print(f"envelope {env_id}: '{e.get('emailSubject', '')}' completed {signed}")
         pdf = ds_download_pdf(token, acct, base, env_id)
+        parsed = parse_contract(pdf)
+        if not is_recall_contract(parsed):
+            print(f"skipping envelope {env_id} '{subj[:70]}' — not a Recall agreement")
+            continue
+        print(f"envelope {env_id}: '{subj[:80]}' completed {signed}")
         process(pdf, env_id, signed, enrich, icb_code, dry_run)
 
 
