@@ -31,6 +31,8 @@ Modes:
   (default)                 poll DocuSign for envelopes completed in the last 30 days (--days N)
   --file X.pdf --envelope-id ID [--signed YYYY-MM-DD]   process a local PDF (testing / backfill)
   --sheet-only              with --file: only write the finance-sheet row
+  --drive-only              with --file: file the PDF on Drive and refresh the Drive links
+                            on the Notion row(s) and the finance-sheet row (re-filing)
   --dry-run                 parse + report, change nothing
 """
 import base64
@@ -605,6 +607,34 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, lin
     print(f"  finance sheet: row {row_no} added for '{parsed['customer']}'")
 
 
+def refile_drive(pdf, envelope_id, signed_date, enrich, dry_run):
+    """Re-file an already-processed contract on Drive and point the Notion
+    row(s) and the API/WG row at the new file."""
+    parsed = parse_contract(pdf)
+    covered = resolve_covered_ods(parsed, enrich)
+    folder_url, file_url = drive_upload(pdf, parsed["customer"], envelope_id, signed_date, dry_run)
+    if not folder_url:
+        return
+    for row in [r for r in fetch_practice_rows() if r["ods"] in covered]:
+        if not dry_run:
+            notion("PATCH", f"/pages/{row['page_id']}",
+                   {"properties": {"Contract folder (Drive)": {"url": folder_url}}})
+        print(f"  Notion: Drive folder link on {row['name']}")
+    try:
+        vals = _sheets_service().spreadsheets().values()
+        rows = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:N").execute().get("values", [])
+        for i, row in enumerate(rows, start=1):
+            if len(row) >= 13 and envelope_id in row[12]:
+                notes = row[12] if "Contract folder:" in row[12] else row[12] + f" | Contract folder: {folder_url}"
+                link = f'=HYPERLINK("{file_url}","Open PDF (Drive)")' if file_url else row[13] if len(row) > 13 else ""
+                if not dry_run:
+                    vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!M{i}:N{i}",
+                                valueInputOption="USER_ENTERED", body={"values": [[notes, link]]}).execute()
+                print(f"  finance sheet: row {i} now links to the Drive PDF")
+    except Exception as e:
+        print(f"  WARN: finance sheet link refresh skipped — {str(e)[:120]}")
+
+
 def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
     """One signed envelope -> Drive folder, HubSpot deal + company, Notion
     row(s), finance sheet — each carrying links to the others."""
@@ -647,6 +677,9 @@ def main():
                   if "--envelope-id" in sys.argv else "manual")
         signed = (sys.argv[sys.argv.index("--signed") + 1]
                   if "--signed" in sys.argv else None)
+        if "--drive-only" in sys.argv:
+            refile_drive(pdf, env_id, signed, enrich, dry_run)
+            return
         if "--sheet-only" in sys.argv:
             parsed = parse_contract(pdf)
             covered = resolve_covered_ods(parsed, enrich)
