@@ -307,14 +307,20 @@ def find_deal(parsed, covered):
     Returns (deal_id, deal_name, contract_practices_ods) or (None, None, "")."""
     # the Customer company: matched by the contract's own ODS code(s) (a PCN's
     # U-code sits in the company's ods_unique) and, as a fallback, by name
-    groups = [{"filters": [{"propertyName": p, "operator": "IN", "values": parsed["ods_codes"]}]}
-              for p in ("ods_unique", "practice_code")] if parsed["ods_codes"] else []
-    if parsed["customer"]:
-        groups.append({"filters": [{"propertyName": "name", "operator": "EQ",
-                                    "value": parsed["customer"]}]})
+    # ODS code first: practice names repeat across England ("Riverside Medical
+    # Practice" exists in Horsham AND Stockton), so a name match is only a
+    # fallback when no company carries the contract's code.
     cust_comp_ids = set()
-    if groups:
-        r = hs("POST", "/crm/v3/objects/companies/search", {"filterGroups": groups, "limit": 20})
+    if parsed["ods_codes"]:
+        r = hs("POST", "/crm/v3/objects/companies/search",
+               {"filterGroups": [{"filters": [{"propertyName": p, "operator": "IN",
+                                               "values": parsed["ods_codes"]}]}
+                                 for p in ("ods_unique", "practice_code")], "limit": 20})
+        cust_comp_ids = {str(c["id"]) for c in r.get("results", [])}
+    if not cust_comp_ids and parsed["customer"]:
+        r = hs("POST", "/crm/v3/objects/companies/search",
+               {"filterGroups": [{"filters": [{"propertyName": "name", "operator": "EQ",
+                                               "value": parsed["customer"]}]}], "limit": 20})
         cust_comp_ids = {str(c["id"]) for c in r.get("results", [])}
     comp_ids = set(cust_comp_ids)
     if covered:
