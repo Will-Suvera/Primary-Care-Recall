@@ -172,7 +172,7 @@ def parse_contract(pdf_bytes):
     out = {"customer": "", "ods_codes": [], "practices": [], "commencement": "",
            "term_months": None, "price_y1": None, "price_y2": None, "register": None,
            "annual_fee": None, "annual_fee_y2": None, "sms_included": None,
-           "term_end": "", "free_until": ""}
+           "term_end": "", "free_until": "", "design_partner": False, "free_first": False}
     m = re.search(r"Customer Details\s+Customer\s+(.+?)\s+Customer Address", text)
     if m:
         out["customer"] = m.group(1).strip()
@@ -247,6 +247,8 @@ def parse_contract(pdf_bytes):
         m = re.search(r"Joining Schedule.*?Participating Practice\s*:?\s*(.+?)\s+(?:ODS|Practice )?Code", text)
         if m:
             out["practices"] = [{"list_size": None, "name": m.group(1).strip()}]
+    out["design_partner"] = bool(re.search(r"design[\s-]*partner", text, re.I))
+    out["free_first"] = bool(out["free_until"] or re.search(r"\bfree (?:period|trial)\b", text, re.I))
     return out
 
 
@@ -405,10 +407,33 @@ def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, compan
 
 # ---------- Notion attach ----------
 
-def notion_attach(pdf, envelope_id, covered, signed_date, links, ctx, dry_run):
+CONTRACT_TYPE_PROP = "Contract Type"
+
+
+def contract_tags(parsed):
+    """Paid from day one -> "Paid". A free trial/period that converts to paid
+    automatically -> "Design Partner" instead; design-partner terms in the
+    text add that tag too."""
+    tags = ["Design Partner"] if parsed.get("free_first") else ["Paid"]
+    if parsed.get("design_partner") and "Design Partner" not in tags:
+        tags.append("Design Partner")
+    return tags
+
+
+def merged_contract_type(page, tags):
+    """Contract Type multi-select with `tags` added, or None if nothing is
+    missing. Existing tags are kept - rows are also tagged by hand."""
+    current = [o["name"] for o in (page["properties"].get(CONTRACT_TYPE_PROP) or {}).get("multi_select", [])]
+    missing = [t for t in tags if t not in current]
+    if not missing:
+        return None
+    return {"multi_select": [{"name": n} for n in current + missing]}
+
+
+def notion_attach(pdf, envelope_id, covered, signed_date, links, ctx, dry_run, tags=()):
     """Every covered practice gets a Recall Practices row (created here from the
     template if the Notion sync hasn't yet), the signed PDF in "Contract",
-    "Contract Signed", and the HubSpot / DocuSign / Drive links."""
+    "Contract Signed", the Contract Type tags, and the HubSpot / DocuSign / Drive links."""
     enrich, icb_code, deal_id, deal_name, ehr = ctx
     rows = [r for r in fetch_practice_rows() if r["ods"] in covered]
     missing = sorted(covered - {r["ods"] for r in rows})
@@ -431,14 +456,18 @@ def notion_attach(pdf, envelope_id, covered, signed_date, links, ctx, dry_run):
     for row in rows:
         page = notion("GET", f"/pages/{row['page_id']}")
         files = page["properties"].get("Contract", {}).get("files", [])
+        type_prop = merged_contract_type(page, tags)
         if any(f.get("name") == fname for f in files):
             props = {k: {"url": v} for k, v in link_props.items()
                      if v and not (page["properties"].get(k) or {}).get("url")}
+            if type_prop:
+                props[CONTRACT_TYPE_PROP] = type_prop
             if props and not dry_run:
                 notion("PATCH", f"/pages/{row['page_id']}", {"properties": props})
             continue
         if dry_run:
-            print(f"  DRY RUN Notion: would attach {fname} + links {list(k for k, v in link_props.items() if v)} to {row['name']}")
+            print(f"  DRY RUN Notion: would attach {fname} + links {list(k for k, v in link_props.items() if v)}"
+                  f" + tags {list(tags)} to {row['name']}")
             continue
         fu = notion("POST", "/file_uploads", {"mode": "single_part", "filename": fname})
         body, ctype = _multipart({}, "file", fname, pdf)
@@ -454,6 +483,8 @@ def notion_attach(pdf, envelope_id, covered, signed_date, links, ctx, dry_run):
         if signed_date:
             props["Contract Signed"] = {"date": {"start": signed_date}}
         props.update({k: {"url": v} for k, v in link_props.items() if v})
+        if type_prop:
+            props[CONTRACT_TYPE_PROP] = type_prop
         notion("PATCH", f"/pages/{row['page_id']}", {"properties": props})
         print(f"  Notion: attached {fname} + links to {row['name']}")
 
@@ -726,7 +757,7 @@ def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
             raise
         print("  WARN: skipped HubSpot attach — add the Files scope to the private app")
     notion_attach(pdf, envelope_id, covered, signed_date, links,
-                  (enrich, icb_code, deal_id, deal_name, ehr), dry_run)
+                  (enrich, icb_code, deal_id, deal_name, ehr), dry_run, tags=contract_tags(parsed))
     sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links)
 
 
@@ -809,7 +840,7 @@ def main():
             deal_id, deal_name, _, _ = find_deal(parsed, covered)
             links = {"hubspot": hubspot_deal_url(deal_id) if deal_id else "", "docusign": docusign_url(env_id)}
             notion_attach(pdf, env_id, covered, signed, links,
-                          (enrich, icb_code, deal_id, deal_name, ""), dry_run)
+                          (enrich, icb_code, deal_id, deal_name, ""), dry_run, tags=contract_tags(parsed))
             return
         process(pdf, env_id, signed, enrich, icb_code, dry_run)
         return
