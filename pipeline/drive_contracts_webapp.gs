@@ -19,12 +19,15 @@ var DEFAULT_PARENT = '1M8tBbnYdgVDHtKuFrmhDy1dz0II6sCZF';
  * GET ?action=fetch&secret=…&msg=<id> -> that email's contract PDF + DocuSign Summary
  *                                   certificate, base64 (the sync reads the envelope
  *                                   id from the Summary and runs the full chain)
- * GET (no action)                -> health check
+ * GET (no action)                -> health check (version 2 adds the draft action)
+ *
+ * POST {secret, action:'draft', to, subject, text, html?, cc?} -> Gmail draft in
+ *                                   Will's mailbox (never sent); returns draft_id
  */
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (!p.action) {
-    return reply({ ok: true, service: 'suvera-contract-filer' });
+    return reply({ ok: true, service: 'suvera-contract-filer', version: 2, actions: ['list', 'fetch', 'file', 'draft'] });
   }
   var props = PropertiesService.getScriptProperties();
   if (!props.getProperty('SECRET') || p.secret !== props.getProperty('SECRET')) {
@@ -62,6 +65,17 @@ function doPost(e) {
   try { body = JSON.parse(e.postData.contents); } catch (err) { return reply({ error: 'bad json' }); }
   if (!props.getProperty('SECRET') || body.secret !== props.getProperty('SECRET')) {
     return reply({ error: 'unauthorised' });
+  }
+  if (body.action === 'draft') {
+    // Post-call follow-up (suvera-automation post_call_followup.py): a Gmail
+    // DRAFT in Will's mailbox, never sent. Made here because the claude.ai
+    // Gmail connector rewrites every link through google.com/url.
+    if (!body.to || !body.subject || !body.text) return reply({ error: 'to, subject and text are required' });
+    var opts = {};
+    if (body.html) opts.htmlBody = body.html;
+    if (body.cc) opts.cc = body.cc;
+    var draft = GmailApp.createDraft(body.to, body.subject, body.text, opts);
+    return reply({ ok: true, draft_id: draft.getId(), message_id: draft.getMessage().getId() });
   }
   if (!body.customer || !body.filename || !body.pdf_base64) {
     return reply({ error: 'customer, filename and pdf_base64 are required' });
