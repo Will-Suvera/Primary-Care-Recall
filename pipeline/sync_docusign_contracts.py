@@ -27,6 +27,11 @@ finance's manual tab): legal name, commencement, term, price per patient,
 register, ARR and the finance formulas for monthly / first-invoice values.
 Auth: GOOGLE_SHEETS_SA_JSON (service-account JSON) or the repo-root key file.
 
+Finally the matched deal is moved to "DPA Signed Onboard Ready" (only from an
+earlier Primary Care Tech Growth stage) and a card is posted to Slack
+#recall-growth (SLACK_BOT_TOKEN, SLACK_RECALL_CHANNEL) with buttons for the
+HubSpot deal, the signed PDF on Drive and the DocuSign envelope.
+
 Sources, in order: (1) the DocuSign "Completed:" emails in Will's inbox, read
 through the Apps Script web app (DRIVE_WEBAPP_URL, action=list/fetch) — works
 without any DocuSign API access, the certified PDF + Summary certificate are the
@@ -55,13 +60,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_notion_recall_practices import (  # noqa: E402
     _request, hs, notion, norm_name, load_enrichment, GEOCODED,
-    NOTION_DB_ID, fetch_practice_rows, PIPELINE_ID, create_practice_page,
-    _copy_blocks, NOTION_TEMPLATE_PAGE)
+    NOTION_DB_ID, fetch_practice_rows, PIPELINE_ID, DPA_SIGNED_STAGE,
+    create_practice_page, _copy_blocks, NOTION_TEMPLATE_PAGE)
 
 HUBSPOT_PORTAL = "143576889"
 DRIVE_PARENT = "1M8tBbnYdgVDHtKuFrmhDy1dz0II6sCZF"  # T&C Contracts / 2. Signed Contracts (Partners)
 
 CS_PIPELINE_ID = "2391616730"
+# Primary Care Tech Growth stages BEFORE "DPA Signed Onboard Ready" — a signed
+# contract advances a deal from any of these; later stages (Live) are left alone.
+PRE_SIGNED_STAGES = {"4489053409": "Signed-up List", "5147362520": "Demo Booked",
+                     "5017986288": "Demo Held", "4489053410": "Proposal Sent",
+                     "5898844361": "Docusign Sent"}
+SLACK_RECALL_CHANNEL = os.environ.get("SLACK_RECALL_CHANNEL", "C0A3YNKUTGB")  # #recall-growth
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
 # Completed envelopes that must NOT go through the chain (superseded contracts etc.)
 SKIP_ENVELOPES = {
@@ -403,6 +414,73 @@ def hubspot_attach(pdf, envelope_id, parsed, covered, deal_id, deal_name, compan
                                          "associationTypeId": assoc_type}]}]})
         done.append(label)
     print(f"  HubSpot: uploaded {name}.pdf + note on {', '.join(done) or 'nothing (no deal/company found — file only)'}")
+
+
+def hubspot_advance_stage(deal_id, deal_name, dry_run):
+    """Move the deal to "DPA Signed Onboard Ready" once its contract is signed.
+    Only deals in the Primary Care Tech Growth pipeline sitting in an earlier
+    stage are moved — a deal already at DPA Signed / Live is never touched.
+    Returns (moved: bool, from_label: str)."""
+    if not deal_id:
+        return False, ""
+    props = hs("GET", f"/crm/v3/objects/deals/{deal_id}?properties=pipeline,dealstage").get("properties", {})
+    if props.get("pipeline") != PIPELINE_ID:
+        return False, ""
+    stage = props.get("dealstage") or ""
+    if stage not in PRE_SIGNED_STAGES:
+        return False, ""
+    from_label = PRE_SIGNED_STAGES[stage]
+    if dry_run:
+        print(f"  DRY RUN HubSpot: would move deal '{deal_name}' {from_label} -> DPA Signed Onboard Ready")
+        return True, from_label
+    hs("PATCH", f"/crm/v3/objects/deals/{deal_id}", {"properties": {"dealstage": DPA_SIGNED_STAGE}})
+    print(f"  HubSpot: deal '{deal_name}' moved {from_label} -> DPA Signed Onboard Ready")
+    return True, from_label
+
+
+def slack_notify(deal_id, deal_name, parsed, covered, signed_date, links, moved_from, dry_run):
+    """Post the signed contract to #recall-growth, mirroring the HubSpot
+    "<deal> - Planner DPA has been signed" card: one headline + link buttons."""
+    token = os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token:
+        print("  Slack: SLACK_BOT_TOKEN not set — skipping the #recall-growth post")
+        return
+    headline = f"{deal_name or parsed['customer'] or 'Unknown deal'} - Recall contract has been signed"
+    facts = []
+    if parsed.get("customer"):
+        facts.append(f"*Customer:* {parsed['customer']}")
+    if parsed.get("practices"):
+        facts.append("*Practices:* " + ", ".join(p["name"] for p in parsed["practices"]))
+    elif covered:
+        facts.append("*Practices (ODS):* " + ", ".join(sorted(covered)))
+    if parsed.get("register"):
+        facts.append(f"*Register:* {parsed['register']:,}" if isinstance(parsed["register"], int)
+                     else f"*Register:* {parsed['register']}")
+    if signed_date:
+        facts.append(f"*Signed:* {signed_date}")
+    facts.append("*Stage:* " + (f"{moved_from} -> DPA Signed Onboard Ready" if moved_from
+                                else "DPA Signed Onboard Ready (unchanged)" if deal_id
+                                else "no HubSpot deal matched - please link by hand"))
+    buttons = [("View deal in HubSpot", links.get("hubspot")),
+               ("Open signed PDF", links.get("drive_file")),
+               ("View in DocuSign", links.get("docusign"))]
+    blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": f"*{headline}*"}},
+              {"type": "context", "elements": [{"type": "mrkdwn", "text": "  ·  ".join(facts)}]},
+              {"type": "actions", "elements": [
+                  {"type": "button", "text": {"type": "plain_text", "text": label}, "url": url}
+                  for label, url in buttons if url]}]
+    if not blocks[-1]["elements"]:
+        blocks.pop()
+    if dry_run:
+        print(f"  DRY RUN Slack: would post to {SLACK_RECALL_CHANNEL}: {headline}")
+        return
+    res = _request("https://slack.com/api/chat.postMessage", "POST",
+                   {"channel": SLACK_RECALL_CHANNEL, "text": headline, "blocks": blocks,
+                    "unfurl_links": False},
+                   headers={"Authorization": f"Bearer {token}"})
+    if not res.get("ok"):
+        raise RuntimeError(f"Slack chat.postMessage failed: {res.get('error')}")
+    print(f"  Slack: posted to #recall-growth ({SLACK_RECALL_CHANNEL}) ts={res.get('ts')}")
 
 
 # ---------- Notion attach ----------
@@ -759,6 +837,16 @@ def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
     notion_attach(pdf, envelope_id, covered, signed_date, links,
                   (enrich, icb_code, deal_id, deal_name, ehr), dry_run, tags=contract_tags(parsed))
     sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links)
+    # last: advance the deal and tell #recall-growth — neither should block the chain above
+    moved_from = ""
+    try:
+        moved, moved_from = hubspot_advance_stage(deal_id, deal_name, dry_run)
+    except RuntimeError as e:
+        print(f"  WARN: could not move deal stage — {str(e)[:200]}")
+    try:
+        slack_notify(deal_id, deal_name, parsed, covered, signed_date, links, moved_from, dry_run)
+    except Exception as e:
+        print(f"  WARN: Slack post failed — {str(e)[:200]}")
 
 
 def is_recall_contract(parsed):

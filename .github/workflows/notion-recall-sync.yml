@@ -39,6 +39,8 @@ jobs:
           GOOGLE_SHEETS_SA_JSON: ${{ secrets.GOOGLE_SHEETS_SA_JSON }}
           DRIVE_WEBAPP_URL: ${{ secrets.DRIVE_WEBAPP_URL }}
           DRIVE_WEBAPP_SECRET: ${{ secrets.DRIVE_WEBAPP_SECRET }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_RECALL_CHANNEL: ${{ secrets.SLACK_RECALL_CHANNEL }}
         run: |
           pip install -q cryptography pypdf google-api-python-client google-auth
           python3 pipeline/sync_docusign_contracts.py
