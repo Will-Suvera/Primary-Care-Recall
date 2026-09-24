@@ -309,3 +309,184 @@ export async function markDropped(sql, setDealDropped, { ods, deal_id = null, by
     values (${ods}, ${deal_id}, ${by}, ${hs_synced}) returning dropped_at`;
   return result({ ok: true, ods, dropped_at: ins[0].dropped_at, hs_synced });
 }
+
+/* ---------------- Hub-added practices (HubSpot webhook + manual create) ---------------- */
+// `onboarding_practices` (Neon, created out-of-band 2026-09-24) holds practices the
+// Hub knows about BEFORE the daily funnel_board rebuild catches up:
+//   source='hubspot' → a Planner deal just moved to "DPA Signed Onboard Ready"
+//                      (HubSpot private-app webhook on deal.propertyChange/dealstage)
+//   source='manual'  → added by hand from the Hub ("+ New practice")
+// hs_stage is only ever set from a real HubSpot stage event (NULL otherwise), so
+// a manual row can never override the board's stage for a linked deal.
+// The frontend merges these over funnel_board deals (board wins on deal_id / ODS),
+// so a practice appears instantly and never duplicates once the rebuild lands.
+// ods may be NULL (deal's company has no ODS yet) — the Hub flags "ODS missing"
+// and lets the team fill it in (PATCH). Rows are soft-removed (removed_at).
+const HS_STAGE_DPA_SIGNED = "4489053411";
+const HS_STAGE_KEY = { [HS_STAGE_DPA_SIGNED]: "dpa_signed", [HS_STAGE_LIVE]: "live", [HS_STAGE_DROPPED]: "dropped" };
+const ODS_RE = /^[A-Z0-9]{3,10}$/;
+const cleanOds = (v) => { const s = String(v || "").trim().toUpperCase(); return ODS_RE.test(s) ? s : null; };
+
+// GET /api/onboarding/practices → [row] (active only), oldest first
+export async function getPractices(sql) {
+  const rows = await sql`select id, ods, deal_id, name, ehr, pcn_name, icb, postcode, source, hs_stage, created_by, created_at, updated_at
+    from onboarding_practices where removed_at is null order by created_at asc`;
+  return result(rows);
+}
+
+// NHS ODS directory lookup (public, no auth) → { name, postcode } or null.
+// Used to auto-fill a manually added practice from just its ODS code.
+export async function lookupOds(ods) {
+  const code = cleanOds(ods);
+  if (!code) return null;
+  try {
+    const r = await fetch(`https://directory.spineservices.nhs.uk/ORD/2-0-0/organisations/${code}`, { headers: { Accept: "application/json" } });
+    if (!r.ok) return null;
+    const o = (await r.json())?.Organisation;
+    if (!o?.Name) return null;
+    const name = o.Name.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\bNhs\b/g, "NHS").replace(/\bPcn\b/g, "PCN");
+    return { ods: code, name, postcode: o.GeoLoc?.Location?.PostCode || null, active: o.Status === "Active" };
+  } catch { return null; }
+}
+
+// POST /api/onboarding/practices → manual create. Body: { ods, name?, ehr?, deal_id? }.
+// ODS is required for a manual add (it's how every other Hub table keys a practice);
+// name auto-fills from the NHS ODS directory when not supplied.
+export async function createPractice(sql, { ods, name = null, ehr = null, deal_id = null, by = null }) {
+  const code = cleanOds(ods);
+  if (!code) return result({ error: "a valid ODS code is required (e.g. A81001)" }, 400);
+  const dup = await sql`select id from onboarding_practices where ods=${code} and removed_at is null`;
+  if (dup[0]) return result({ error: `${code} is already in the Hub` }, 409);
+  const found = await lookupOds(code);
+  const nm = String(name || "").trim() || found?.name;
+  if (!nm) return result({ error: `couldn't find ${code} in the NHS directory — enter the practice name` }, 400);
+  const did = String(deal_id || "").trim().replace(/\D/g, "") || null;
+  const ins = await sql`insert into onboarding_practices (ods, deal_id, name, ehr, postcode, source, hs_stage, created_by)
+    values (${code}, ${did}, ${nm}, ${ehr || null}, ${found?.postcode || null}, 'manual', null, ${by})
+    returning id, ods, deal_id, name, ehr, pcn_name, icb, postcode, source, hs_stage, created_by, created_at, updated_at`;
+  return result(ins[0]);
+}
+
+// PATCH /api/onboarding/practices → set the ODS on a row (the "ODS missing" fix)
+// Body: { id, ods }  or  { deal_id, ods, name? } — the latter upserts, so an ODS can
+// also be supplied for a funnel_board deal that the Hub didn't create itself.
+export async function setPracticeOds(sql, { id = null, deal_id = null, ods, name = null, by = null }) {
+  const code = cleanOds(ods);
+  if (!code) return result({ error: "a valid ODS code is required" }, 400);
+  const clash = await sql`select id, deal_id from onboarding_practices where ods=${code} and removed_at is null`;
+  const did = deal_id ? String(deal_id) : null;
+  if (clash[0] && String(clash[0].id) !== String(id) && (!did || clash[0].deal_id !== did)) {
+    return result({ error: `${code} is already attached to another practice in the Hub` }, 409);
+  }
+  let rows = id
+    ? await sql`update onboarding_practices set ods=${code}, updated_at=now() where id=${id} and removed_at is null
+        returning id, ods, deal_id, name, ehr, pcn_name, icb, postcode, source, hs_stage, created_by, created_at, updated_at`
+    : did
+      ? await sql`update onboarding_practices set ods=${code}, updated_at=now() where deal_id=${did} and removed_at is null
+          returning id, ods, deal_id, name, ehr, pcn_name, icb, postcode, source, hs_stage, created_by, created_at, updated_at`
+      : [];
+  if (!rows[0] && did) {
+    rows = await sql`insert into onboarding_practices (ods, deal_id, name, source, hs_stage, created_by)
+      values (${code}, ${did}, ${String(name || "").trim() || code}, 'hubspot', null, ${by})
+      returning id, ods, deal_id, name, ehr, pcn_name, icb, postcode, source, hs_stage, created_by, created_at, updated_at`;
+  }
+  if (!rows[0]) return result({ error: "practice not found" }, 404);
+  return result(rows[0]);
+}
+
+// DELETE /api/onboarding/practices → soft-remove a MANUAL row (added by mistake).
+// HubSpot-sourced rows follow the deal stage instead, so they can't be removed here.
+export async function removePractice(sql, { id }) {
+  if (!id) return result({ error: "id required" }, 400);
+  const rows = await sql`update onboarding_practices set removed_at=now()
+    where id=${id} and source='manual' and removed_at is null returning id`;
+  if (!rows[0]) return result({ error: "only manually-added practices can be removed" }, 400);
+  return result({ ok: true, id });
+}
+
+// ---- HubSpot webhook ----
+// Verify a HubSpot v3 request signature (private-app webhooks sign with the app's
+// client secret): base64(HMAC-SHA256(secret, method + uri + body + timestamp)),
+// rejecting anything older than 5 minutes (replay guard). Web Crypto, so the same
+// code runs on Cloudflare and Node 18+.
+export async function verifyHubspotSignature({ secret, method, uri, body, signature, timestamp, now = Date.now() }) {
+  if (!secret || !signature || !timestamp) return false;
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(now - ts) > 5 * 60 * 1000) return false;
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`${method}${uri}${body}${timestamp}`)));
+  let bin = ""; for (const b of mac) bin += String.fromCharCode(b);
+  const expected = btoa(bin);
+  if (expected.length !== signature.length) return false;
+  let diff = 0; for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
+
+// Minimal HubSpot reader for the webhook: deal + its company's ODS. Throws on HTTP
+// failure so the webhook returns 5xx and HubSpot retries.
+export function makeHubspotReader({ token }) {
+  const get = async (path) => {
+    const r = await fetch(`https://api.hubapi.com${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error(`HubSpot GET ${path.split("?")[0]} → ${r.status}`);
+    return r.json();
+  };
+  return {
+    async dealWithOds(deal_id) {
+      const d = await get(`/crm/v3/objects/deals/${encodeURIComponent(deal_id)}?properties=dealname,pipeline,dealstage,ehr_type&associations=companies`);
+      const p = d.properties || {};
+      let ods = null, company = null;
+      const cid = d.associations?.companies?.results?.[0]?.id;
+      if (cid) {
+        const c = await get(`/crm/v3/objects/companies/${encodeURIComponent(cid)}?properties=name,ods_unique,practice_code`);
+        company = c.properties?.name || null;
+        ods = cleanOds(c.properties?.ods_unique) || cleanOds(c.properties?.practice_code);
+      }
+      return {
+        deal_id: String(d.id), pipeline: p.pipeline, stage: p.dealstage, ehr: p.ehr_type || null, ods,
+        name: String(p.dealname || company || `Deal ${d.id}`).replace(/\s*-\s*Planner\s*$/i, "").replace(/^PAID\s*-\s*/i, "").trim(),
+      };
+    },
+  };
+}
+
+// Process a HubSpot webhook batch. Each event: { subscriptionType, objectId,
+// propertyName, propertyValue, occurredAt, ... }. We act on Planner deal-stage
+// changes only:
+//   → DPA Signed Onboard Ready : add the practice to the Hub (idempotent on deal_id)
+//   → Live / Dropped / earlier : update hs_stage on a row we already track
+//     (the frontend hides rows whose stage isn't dpa_signed/live)
+// Returns a per-event summary (logged + echoed for debugging).
+export async function handleDealStageEvents(sql, reader, events) {
+  const out = [];
+  for (const e of Array.isArray(events) ? events : []) {
+    const deal_id = String(e.objectId || "");
+    if (!deal_id || !/deal\./.test(e.subscriptionType || "") || (e.propertyName && e.propertyName !== "dealstage")) {
+      out.push({ deal_id, skipped: "not a deal-stage event" }); continue;
+    }
+    const stageKey = HS_STAGE_KEY[e.propertyValue] || "other";
+    const tracked = await sql`select id from onboarding_practices where deal_id=${deal_id} and removed_at is null`;
+    if (e.propertyValue !== HS_STAGE_DPA_SIGNED) {
+      if (tracked[0]) await sql`update onboarding_practices set hs_stage=${stageKey}, updated_at=now() where id=${tracked[0].id}`;
+      out.push({ deal_id, stage: stageKey, updated: !!tracked[0] }); continue;
+    }
+    const deal = await reader.dealWithOds(deal_id);
+    if (deal.pipeline !== HS_PIPELINE) { out.push({ deal_id, skipped: "not the Planner pipeline" }); continue; }
+    if (tracked[0]) {
+      await sql`update onboarding_practices set hs_stage='dpa_signed', ods=coalesce(ods, ${deal.ods}),
+        ehr=coalesce(ehr, ${deal.ehr}), updated_at=now() where id=${tracked[0].id}`;
+      out.push({ deal_id, ods: deal.ods, updated: true }); continue;
+    }
+    // A manual row may already exist for this ODS — attach the deal to it rather than duplicate.
+    if (deal.ods) {
+      const byOds = await sql`update onboarding_practices set deal_id=coalesce(deal_id, ${deal_id}), hs_stage='dpa_signed',
+        ehr=coalesce(ehr, ${deal.ehr}), updated_at=now() where ods=${deal.ods} and removed_at is null returning id`;
+      if (byOds[0]) { out.push({ deal_id, ods: deal.ods, linked: byOds[0].id }); continue; }
+    }
+    await sql`insert into onboarding_practices (ods, deal_id, name, ehr, source, hs_stage, created_by)
+      values (${deal.ods}, ${deal_id}, ${deal.name}, ${deal.ehr}, 'hubspot', 'dpa_signed', 'HubSpot')
+      on conflict do nothing`;
+    out.push({ deal_id, ods: deal.ods, created: true });
+  }
+  return out;
+}

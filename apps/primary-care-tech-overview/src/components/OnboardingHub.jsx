@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./OnboardingHub.css";
-import { useOnboarding, mergeOnboarding, summarizeOnboarding, firstNameFromEmail, WAITING_ON, WAITING_LABEL, STATE_CYCLE } from "../onboarding.js";
+import { useOnboarding, mergeOnboarding, summarizeOnboarding, firstNameFromEmail, defaultSteps, WAITING_ON, WAITING_LABEL, STATE_CYCLE } from "../onboarding.js";
 
 // The Onboarding Hub: the CS team's action surface for DPA-signed-onwards
 // practices. It answers "who needs to do what, and why can't we move forward":
@@ -57,8 +57,47 @@ const clockTime = (s) => (s && String(s).includes("T") ? fmtTime(s) : "");
 const HS_PORTAL = "143576889";
 const hubspotDealUrl = (deal_id) => (deal_id ? `https://app-eu1.hubspot.com/contacts/${HS_PORTAL}/record/0-3/${encodeURIComponent(deal_id)}` : null);
 
-// Cohort = HubSpot Planner deals at DPA-signed or beyond, with an ODS code.
-const inCohort = (d) => (d.stage === "dpa_signed" || d.stage === "live") && d.ods;
+// Cohort = HubSpot Planner deals at DPA-signed or beyond. A deal with no ODS yet is
+// still shown (flagged "ODS missing") so a fresh signing never silently vanishes.
+const inCohort = (d) => d.stage === "dpa_signed" || d.stage === "live";
+
+// Merge the Hub-added practices (Neon onboarding_practices: HubSpot webhook +
+// manual adds) into the daily funnel_board deals.
+//  • Same deal_id on both → one practice. Whichever was updated more recently
+//    decides the stage (the webhook is fresher than the 06:30 rebuild, so a deal
+//    that just moved in — or out — is reflected now). The Hub row can also carry
+//    the ODS for a board deal whose HubSpot company has none.
+//  • A Hub row whose ODS is already a cohort deal → skipped (board wins).
+//  • Anything left becomes a synthetic deal so it appears immediately.
+const HUB_STAGE_LABEL = { dpa_signed: "DPA Signed Onboard Ready", live: "Full Functionality Live" };
+function mergeHubPractices(deals, practices, generatedAt) {
+  const byDeal = new Map((practices || []).filter((p) => p.deal_id).map((p) => [String(p.deal_id), p]));
+  const boardTs = Date.parse(generatedAt || "") || 0;
+  const used = new Set();
+  const out = (deals || []).map((d) => {
+    const p = d.deal_id != null ? byDeal.get(String(d.deal_id)) : null;
+    if (!p) return d;
+    used.add(p.id);
+    const hubNewer = p.hs_stage && Date.parse(p.updated_at) > boardTs;
+    const stage = hubNewer ? p.hs_stage : d.stage;
+    return { ...d, ods: d.ods || p.ods || null, stage, stage_label: HUB_STAGE_LABEL[stage] || d.stage_label, _hub: p };
+  });
+  const cohortOds = new Set(out.filter(inCohort).map((d) => d.ods).filter(Boolean));
+  for (const p of practices || []) {
+    if (used.has(p.id) || (p.ods && cohortOds.has(p.ods))) continue;
+    const stage = p.hs_stage || "dpa_signed";
+    if (!HUB_STAGE_LABEL[stage]) continue; // moved back / dropped since it was added
+    const age = daysSince(p.created_at);
+    out.push({
+      deal_id: p.deal_id || null, name: p.name, ods: p.ods || null, stage, stage_label: HUB_STAGE_LABEL[stage],
+      ehr: p.ehr || "Unknown", days_in_stage: age, days_since_dpa: age, pcn_name: p.pcn_name, icb: p.icb,
+      recalling: false, onboarding: null, stage_timeline: [], _hub: p,
+    });
+  }
+  return out;
+}
+// Stable per-practice key: ODS when known, else the HubSpot deal / Hub row.
+const practiceKey = (d) => d.ods || (d.deal_id ? `deal-${d.deal_id}` : `hub-${d._hub?.id}`);
 
 function statusOf(d) {
   if (d.stage === "dpa_signed") return { key: "st-dpa", label: "DPA signed", group: "dpa" };
@@ -180,11 +219,12 @@ const HUB_NAV = [
 ];
 
 export default function OnboardingHub({ data, visits = {}, auth = null }) {
-  const { liveOnb, toggleStep, setStepState, editor, notes, addNote, editNote, deleteNote, blocks, setStepBlock, hidden, hideActivity, live, markLive, dropped, markDropped, error, setError } = useOnboarding(auth);
+  const { practices, addPractice, setPracticeOds, removePractice, lookupOds, liveOnb, toggleStep, setStepState, editor, notes, addNote, editNote, deleteNote, blocks, setStepBlock, hidden, hideActivity, live, markLive, dropped, markDropped, error, setError } = useOnboarding(auth);
   const [selected, setSelected] = useState(() => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("practice") : null));
   const [monthOffset, setMonthOffset] = useState(0);
   const [confirmLive, setConfirmLive] = useState(null); // deal pending mark-live confirmation
   const [confirmDropped, setConfirmDropped] = useState(null); // deal pending dropped-out confirmation
+  const [showNew, setShowNew] = useState(false); // "+ New practice" modal
   const [showForm, setShowForm] = useState(false); // Fillout onboarding form open (per practice)
   const [slot, setSlot] = useState(null);
   // Home-view filter/search/sort live HERE (not in HubHome) so they survive opening a
@@ -229,11 +269,14 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
 
   // cohort enriched with status, progress, blocked info, recall booking, live + flags
   const cohort = useMemo(() => {
-    return (data.deals || [])
+    return mergeHubPractices(data.deals, practices, data.generated_at)
       .filter(inCohort)
-      .filter((d) => !dropped?.[d.ods]) // dropped-out practices leave the Hub immediately
+      .filter((d) => !d.ods || !dropped?.[d.ods]) // dropped-out practices leave the Hub immediately
       .map((d) => {
-        const steps = d.onboarding?.length ? mergeOnboarding(d.onboarding, liveOnb?.[d.ods]) : [];
+        // Not on the tracker sheet yet (e.g. just signed) → start from the full
+        // all-"to do" checklist so steps can be ticked from day one.
+        const base = d.onboarding?.length ? d.onboarding : defaultSteps(d.ehr);
+        const steps = mergeOnboarding(base, liveOnb?.[d.ods]);
         const onb = summarizeOnboarding(steps);
         const blk = blockInfo(steps, blocks?.[d.ods]);
         const markedLive = live?.[d.ods] || null;
@@ -251,16 +294,16 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
         const stallDays = data.stale_thresholds?.[d.stage] ?? STALL_DAYS; // stage-specific (dpa_signed/live = 21)
         const stalled = !ready && !markedLive && !isLiveStage && !allDone && !allBooked && (blk.count > 0 || (d.days_in_stage || 0) > stallDays);
         return {
-          ...d, _status: statusOf(d), _steps: steps, _onb: onb, _blk: blk, _live: markedLive,
+          ...d, onboarding: base, _key: practiceKey(d), _odsMissing: !d.ods, _status: statusOf(d), _steps: steps, _onb: onb, _blk: blk, _live: markedLive,
           _isLive: isLiveStage || !!markedLive, _ready: ready, _stalled: stalled, _allBooked: allBooked,
           _recall: rec, _recallBooked: !!futureRecalls(rec, todayStr).length, _outstanding: Math.max(0, onb.total - onb.done),
         };
       })
       .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [data, liveOnb, blocks, live, dropped, visits, todayStr]);
+  }, [data, practices, liveOnb, blocks, live, dropped, visits, todayStr]);
 
-  const cohortOds = useMemo(() => new Set(cohort.map((d) => d.ods)), [cohort]);
-  const sel = useMemo(() => cohort.find((d) => d.ods === selected) || null, [cohort, selected]);
+  const cohortOds = useMemo(() => new Set(cohort.map((d) => d._key)), [cohort]);
+  const sel = useMemo(() => cohort.find((d) => d._key === selected) || null, [cohort, selected]);
 
   // top tracker — the tiles double as filter tabs (see TILES / TILE_PRED).
   // Mutually exclusive + exhaustive so the four state tiles sum to All. Blocked
@@ -341,6 +384,8 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
                 <div className="oh-detail-meta">
                   <span className={"oh-pill " + sel._status.key}>{sel._status.label}</span>
                   {sel.tier && <span className="oh-tag">{sel.tier}</span>}
+                  {sel._odsMissing && <span className="oh-tag blk">ODS missing</span>}
+                  {sel._hub && !sel.stage_timeline?.length && <span className="oh-tag">{hubOrigin(sel._hub)}</span>}
                   {sel._blk.count > 0 && <span className="oh-tag blk">⚑ {sel._blk.count} blocked</span>}
                   {sel._live && <span className="oh-tag livemark">✓ marked live{sel._live.hs_synced ? " · HubSpot" : ""}</span>}
                   {sel._onb.next ? <span className="oh-tag">Next: {sel._onb.next}</span> : sel._onb.total ? <span className="oh-tag">All steps done</span> : null}
@@ -352,7 +397,9 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
                 </button>
                 {hubspotDealUrl(sel.deal_id) && <a className="oh-hslink" href={hubspotDealUrl(sel.deal_id)} target="_blank" rel="noreferrer"><img className="oh-hs-ico" src="/assets/hubspot-logo.png" alt="" />HubSpot deal ↗</a>}
                 {sel._ready && <button className="oh-mark-live sm" onClick={() => setConfirmLive(sel)}>Mark live</button>}
-                <button className="oh-drop sm" onClick={() => setConfirmDropped(sel)}>Dropped out</button>
+                {sel._hub?.source === "manual" && !sel.stage_timeline?.length
+                  ? <RemoveBtn onRemove={async () => { const r = await removePractice(sel._hub.id); if (r.ok) backToHome(); else setError(r.error); }} />
+                  : !sel._odsMissing && <button className="oh-drop sm" onClick={() => setConfirmDropped(sel)}>Dropped out</button>}
                 <button className="oh-back" onClick={backToHome}>← All practices</button>
               </div>
             </>
@@ -362,9 +409,12 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
                 <h2>Onboarding Hub — who needs what, and why we're stuck</h2>
                 <span className="sub">{kpis.total} practices · click a step to update it · changes timestamped{editor ? ` as ${editor}` : ""}.</span>
               </div>
-              {auth?.email && (
-                <span className="oh-back" style={{ cursor: "default" }}>Editing as <b>{firstNameFromEmail(auth.email)}</b></span>
-              )}
+              <div className="oh-topbar-acts">
+                <button className="oh-formbtn" onClick={() => setShowNew(true)}>+ New practice</button>
+                {auth?.email && (
+                  <span className="oh-back" style={{ cursor: "default" }}>Editing as <b>{firstNameFromEmail(auth.email)}</b></span>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -379,11 +429,19 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
                 setStepState(sel, { key: "appt_config" }, "done", "Uploaded");
               }} />
           ) : sel ? (
+            <>
+            {sel._odsMissing && <OdsMissing deal={sel} lookupOds={lookupOds}
+              onSave={async (ods) => {
+                const r = await setPracticeOds({ id: sel._hub?.id, deal_id: sel.deal_id, name: sel.name }, ods);
+                if (r.ok) selectPractice(r.row.ods);
+                return r;
+              }} />}
             <HubDetail key={sel.ods} deal={sel} liveOnb={liveOnb} toggleStep={toggleStep} setStepState={setStepState}
               notes={notes[sel.ods] || []} addNote={addNote} editNote={editNote} deleteNote={deleteNote}
               blocksForOds={blocks?.[sel.ods] || {}} setStepBlock={setStepBlock}
               hiddenForOds={hidden?.[sel.ods] || []} hideActivity={hideActivity}
               recall={recallStatus(sel._recall, todayStr)} onMarkLive={() => setConfirmLive(sel)} />
+            </>
           ) : (
             <HubHome kpis={kpis} cohort={cohort} events={events}
               monthOffset={monthOffset} setMonthOffset={setMonthOffset}
@@ -397,6 +455,14 @@ export default function OnboardingHub({ data, visits = {}, auth = null }) {
       {confirmLive && (
         <ConfirmLive deal={confirmLive} onCancel={() => setConfirmLive(null)}
           onConfirm={() => { markLive(confirmLive); setConfirmLive(null); }} />
+      )}
+      {showNew && (
+        <NewPractice lookupOds={lookupOds} cohort={cohort} onCancel={() => setShowNew(false)}
+          onCreate={async (form) => {
+            const r = await addPractice(form);
+            if (r.ok) { setShowNew(false); selectPractice(r.row.ods); }
+            return r;
+          }} />
       )}
       {confirmDropped && (
         <ConfirmDropped deal={confirmDropped} onCancel={() => setConfirmDropped(null)}
@@ -455,6 +521,121 @@ function FilloutForm({ deal, onBack, onSubmitted }) {
         data-fillout-dynamic-resize=""
       />
     </div>
+  );
+}
+
+/* ---------------- Hub-added practices ---------------- */
+
+const hubOrigin = (p) => (p.source === "manual"
+  ? `Added manually${p.created_by ? ` by ${p.created_by}` : ""} · ${fmtDate(p.created_at)}`
+  : `Added from HubSpot · ${fmtDate(p.created_at)}`);
+
+// Two-click remove for a manually-added practice (added by mistake).
+function RemoveBtn({ onRemove }) {
+  const [armed, setArmed] = useState(false);
+  return armed
+    ? <button className="oh-drop sm" onClick={onRemove} onBlur={() => setArmed(false)} autoFocus>Confirm remove</button>
+    : <button className="oh-drop sm" onClick={() => setArmed(true)} title="Remove this manually-added practice from the Hub">Remove</button>;
+}
+
+// Debounced NHS ODS directory lookup → { name, postcode, active } | null | "loading".
+function useOdsLookup(ods, lookupOds) {
+  const [hit, setHit] = useState(null);
+  useEffect(() => {
+    const code = (ods || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{5,6}$/.test(code)) { setHit(null); return; }
+    setHit("loading");
+    let live = true;
+    const t = setTimeout(() => lookupOds(code).then((r) => { if (live) setHit(r); }), 350);
+    return () => { live = false; clearTimeout(t); };
+  }, [ods]);
+  return hit;
+}
+
+// "+ New practice" — add a practice to the Hub by hand. Hub-only: nothing is
+// written to HubSpot. Name auto-fills from the NHS ODS directory.
+function NewPractice({ lookupOds, cohort, onCancel, onCreate }) {
+  const [ods, setOds] = useState("");
+  const [name, setName] = useState("");
+  const [ehr, setEhr] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const hit = useOdsLookup(ods, lookupOds);
+  const code = ods.trim().toUpperCase();
+  const existing = code && cohort.find((d) => d.ods === code);
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr(null);
+    const r = await onCreate({ ods: code, name: name.trim() || null, ehr: ehr || null, deal_id: dealId.trim() || null });
+    setBusy(false);
+    if (!r.ok) setErr(r.error);
+  };
+  return (
+    <div className="oh-modal-back" onClick={onCancel}>
+      <form className="oh-modal oh-newform" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h3>Add a practice to the Hub</h3>
+        <p>For a practice that isn't coming through from HubSpot. It's added to the Hub only, with the full checklist set to "to do". Nothing changes in HubSpot.</p>
+        <label>ODS code
+          <input value={ods} onChange={(e) => setOds(e.target.value)} placeholder="e.g. A81001" autoFocus maxLength={10} required />
+        </label>
+        <div className="oh-newform-hint">
+          {existing ? <span className="bad">Already in the Hub as {existing.name}.</span>
+            : hit === "loading" ? "Looking up…"
+            : hit ? <span className="ok">✓ {hit.name}{hit.postcode ? ` · ${hit.postcode}` : ""}{hit.active === false ? " · (inactive in NHS directory)" : ""}</span>
+            : code.length >= 5 ? <span className="bad">Not found in the NHS directory — enter the name below.</span> : null}
+        </div>
+        <label>Practice name <span className="opt">(optional — defaults to the NHS name)</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={hit && hit !== "loading" ? hit.name : ""} />
+        </label>
+        <label>EHR
+          <select value={ehr} onChange={(e) => setEhr(e.target.value)}>
+            <option value="">Unknown</option>
+            <option value="EMIS">EMIS</option>
+            <option value="SystmOne">SystmOne</option>
+            <option value="Medicus">Medicus</option>
+          </select>
+        </label>
+        <label>HubSpot deal ID <span className="opt">(optional — links the practice to its deal)</span>
+          <input value={dealId} onChange={(e) => setDealId(e.target.value)} placeholder="e.g. 443245056236" inputMode="numeric" />
+        </label>
+        {err && <div className="oh-newform-err">{err}</div>}
+        <div className="oh-modal-acts">
+          <button type="button" className="oh-btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="oh-btn-live" disabled={busy || !code || !!existing}>{busy ? "Adding…" : "Add practice"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Banner on a practice whose HubSpot company has no ODS code. Steps, notes and
+// blocks are all keyed by ODS, so they unlock once it's added here (Hub-only —
+// fix the company's ODS in HubSpot too so the daily rebuild agrees).
+function OdsMissing({ deal, lookupOds, onSave }) {
+  const [ods, setOds] = useState("");
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const hit = useOdsLookup(ods, lookupOds);
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true); setErr(null);
+    const r = await onSave(ods.trim().toUpperCase());
+    setBusy(false);
+    if (!r.ok) setErr(r.error);
+  };
+  return (
+    <form className="oh-odsmissing" onSubmit={save}>
+      <div>
+        <b>ODS code missing.</b> {deal.name}'s HubSpot company has no ODS code, so steps and notes can't be saved yet. Add it here to start onboarding.
+        <div className="oh-newform-hint">
+          {hit === "loading" ? "Looking up…" : hit ? <span className="ok">✓ {hit.name}{hit.postcode ? ` · ${hit.postcode}` : ""}</span> : null}
+          {err && <span className="bad"> {err}</span>}
+        </div>
+      </div>
+      <input value={ods} onChange={(e) => setOds(e.target.value)} placeholder="ODS e.g. A81001" maxLength={10} />
+      <button type="submit" className="oh-formbtn" disabled={busy || ods.trim().length < 3}>{busy ? "Saving…" : "Save ODS"}</button>
+    </form>
   );
 }
 
@@ -579,7 +760,7 @@ function HubHome({ kpis, cohort, events, monthOffset, setMonthOffset, onOpen, op
             </thead>
             <tbody>
               {!list.length && <tr><td className="oh-empty" colSpan={COLS.length + 1}>No practices match.</td></tr>}
-              {list.map((d) => <PracticeRow key={d.ods} d={d} onOpen={onOpen} onMarkLive={onMarkLive} />)}
+              {list.map((d) => <PracticeRow key={d._key} d={d} onOpen={onOpen} onMarkLive={onMarkLive} />)}
             </tbody>
           </table>
         </div>
@@ -602,8 +783,11 @@ function PracticeRow({ d, onOpen, onMarkLive }) {
   const dpa = dpaDays(d);
   const pct = d._onb.total ? Math.round((d._onb.done / d._onb.total) * 100) : 0;
   return (
-    <tr className="oh-tr" onClick={() => onOpen(d.ods)}>
-      <td className="oh-td name"><span className={"dot " + d._status.key} /><span className="nm">{d.name}</span></td>
+    <tr className="oh-tr" onClick={() => onOpen(d._key)}>
+      <td className="oh-td name"><span className={"dot " + d._status.key} /><span className="nm">{d.name}</span>
+        {d._odsMissing && <span className="oh-new-tag warn" title="The HubSpot company has no ODS code — open the practice to add it">ODS missing</span>}
+        {!d._odsMissing && d._hub && !d.stage_timeline?.length && <span className="oh-new-tag" title={hubOrigin(d._hub)}>New</span>}
+      </td>
       <td className="oh-td ehr">{ehrShort(d.ehr) ? <span className={"oh-ehr-tag " + ehrShort(d.ehr).toLowerCase()}>{ehrShort(d.ehr)}</span> : <span className="oh-ehr-tag none">—</span>}</td>
       <td className="oh-td status"><span className={"oh-stat " + si.cls}>{si.label}</span></td>
       <td className="oh-td action"><span className={"oh-na " + na.tone} title={na.detail || undefined}>{na.label}</span></td>

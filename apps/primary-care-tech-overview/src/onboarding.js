@@ -61,6 +61,30 @@ export function onboardingFor(deal, liveForOds) {
   return mergeOnboarding(deal.onboarding, liveForOds) || [];
 }
 
+// The implementation checklist, mirroring ONBOARD_STEPS in pipeline/build_funnel_board.py
+// (same keys + order). Used as an all-"to do" starting checklist for a practice that
+// isn't on the tracker sheet yet — e.g. one just added from HubSpot or by hand — so
+// the team can tick steps from day one instead of waiting for the sheet.
+export const DEFAULT_STEPS = [
+  ["EMIS Notified", "emis_notified"],
+  ["IM1 User created", "im1_user_created"],
+  ["Sharing agreement accepted", "sharing_agreement"],
+  ["Patient Data Sync", "patient_data_sync"],
+  ["Practice on dashboard", "practice_on_dashboard"],
+  ["HeroHealth", "herohealth"],
+  ["Onboarding Call", "onboarding_call"],
+  ["Appt Config", "appt_config"],
+  ["Bloods automation", "bloods_automation"],
+  ["Recall Session", "recall_session"],
+];
+const isS1 = (ehr) => { const e = (ehr || "").toLowerCase(); return e.includes("systm") || e === "s1" || e.includes("tpp"); };
+// SystmOne practices need no EMIS notification or sharing agreement → N/A (as the pipeline does).
+export function defaultSteps(ehr) {
+  return DEFAULT_STEPS.map(([step, key]) => (isS1(ehr) && (key === "emis_notified" || key === "sharing_agreement")
+    ? { step, key, state: "na", value: "N/A · SystmOne" }
+    : { step, key, state: "todo", value: "" }));
+}
+
 // Hook owning the live onboarding state + the timestamped toggle write path.
 // `auth` is the signed-in Google user ({ email, token }) in prod, null in local dev.
 // Who we're waiting on for a blocked step — display labels.
@@ -74,6 +98,7 @@ export function useOnboarding(auth = null) {
   const [hidden, setHidden] = useState({}); // ods -> [activity_key] hidden from the activity log (declutter only)
   const [live, setLive] = useState({});     // ods -> {marked_by, marked_at, hs_synced}
   const [dropped, setDropped] = useState({}); // ods -> {dropped_by, dropped_at, hs_synced}
+  const [practices, setPractices] = useState([]); // Hub-added practices (HubSpot webhook + manual) — see onboarding_practices
   const [error, setError] = useState(null); // user-visible "something didn't reach the server" hint
   const [who, setWho] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("pcto.who")) || "");
   // Surface load/save failures instead of swallowing them: optimistic UI is great
@@ -90,6 +115,19 @@ export function useOnboarding(auth = null) {
     fetch(`${ONB_BASE}/live`, { headers }).then((r) => r.json()).then(setLive).catch(onLoadFail("live"));
     fetch(`${ONB_BASE}/hidden`, { headers }).then((r) => r.json()).then(setHidden).catch(onLoadFail("hidden"));
     fetch(`${ONB_BASE}/dropped`, { headers }).then((r) => r.json()).then(setDropped).catch(onLoadFail("dropped"));
+    fetch(`${ONB_BASE}/practices`, { headers }).then((r) => r.json()).then((rows) => setPractices(Array.isArray(rows) ? rows : [])).catch(onLoadFail("practices"));
+  }, [auth?.token]);
+
+  // Hub-added practices are written by the HubSpot webhook in the background, so
+  // re-poll them every minute while the Hub is open — a deal that moves to DPA
+  // signed shows up without a page reload.
+  useEffect(() => {
+    const headers = auth?.token ? { Authorization: `Bearer ${auth.token}` } : {};
+    const t = setInterval(() => {
+      fetch(`${ONB_BASE}/practices`, { headers }).then((r) => (r.ok ? r.json() : null))
+        .then((rows) => { if (Array.isArray(rows)) setPractices(rows); }).catch(() => {});
+    }, 60000);
+    return () => clearInterval(t);
   }, [auth?.token]);
 
   // Attribution = the signed-in person's first name (from the Google login) in
@@ -260,5 +298,43 @@ export function useOnboarding(auth = null) {
     } catch (e) { onSaveFail("dropped")(e); /* keep optimistic */ }
   }
 
-  return { liveOnb, setLiveOnb, notes, addNote, editNote, deleteNote, blocks, setStepBlock, hidden, hideActivity, live, markLive, dropped, markDropped, who, setWho, editor, toggleStep, setStepState, error, setError };
+  // Practices CRUD (not optimistic — these return validation errors the form shows).
+  // Each returns { ok, row } or { ok: false, error }.
+  async function practicesCall(method, payload) {
+    try {
+      const r = await fetch(`${ONB_BASE}/practices`, {
+        method,
+        headers: { "Content-Type": "application/json", ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}) },
+        body: JSON.stringify({ ...payload, by: editor }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, error: j.error || `Request failed (${r.status})` };
+      return { ok: true, row: j };
+    } catch (e) { return { ok: false, error: "Couldn't reach the server — check your connection and retry." }; }
+  }
+  async function addPractice({ ods, name, ehr, deal_id }) {
+    const res = await practicesCall("POST", { ods, name, ehr, deal_id });
+    if (res.ok) setPractices((prev) => [...prev, res.row]);
+    return res;
+  }
+  // Attach an ODS to a practice flagged "ODS missing" — by Hub row id, or by deal_id
+  // for a funnel_board deal the Hub didn't create (the API upserts a row for it).
+  async function setPracticeOds({ id, deal_id, name }, ods) {
+    const res = await practicesCall("PATCH", { id, deal_id, name, ods });
+    if (res.ok) setPractices((prev) => [...prev.filter((p) => p.id !== res.row.id), res.row]);
+    return res;
+  }
+  async function removePractice(id) {
+    const res = await practicesCall("DELETE", { id });
+    if (res.ok) setPractices((prev) => prev.filter((p) => p.id !== id));
+    return res;
+  }
+  async function lookupOds(ods) {
+    try {
+      const r = await fetch(`${ONB_BASE}/ods-lookup?ods=${encodeURIComponent(ods)}`, { headers: auth?.token ? { Authorization: `Bearer ${auth.token}` } : {} });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  }
+
+  return { practices, addPractice, setPracticeOds, removePractice, lookupOds, liveOnb, setLiveOnb, notes, addNote, editNote, deleteNote, blocks, setStepBlock, hidden, hideActivity, live, markLive, dropped, markDropped, who, setWho, editor, toggleStep, setStepState, error, setError };
 }

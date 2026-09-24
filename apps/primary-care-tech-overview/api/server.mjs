@@ -10,6 +10,8 @@ import {
   makeNotesHub, makeDealLiveSetter, makeDealDroppedSetter,
   getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
+  getPractices, createPractice, setPracticeOds, removePractice, lookupOds,
+  verifyHubspotSignature, makeHubspotReader, handleDealStageEvents,
 } from "./onboarding-core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +61,7 @@ const setDealDropped = makeDealDroppedSetter({ token: loadEnv("HUBSPOT_API_TOKEN
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 const json = (res, code, body) => {
   res.writeHead(code, { "Content-Type": "application/json", ...CORS });
@@ -101,6 +103,27 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/onboarding/hide") return send(await hideActivity(sql, await readBody(req)));
     if (req.method === "GET" && p === "/api/onboarding/dropped") return send(await getDropped(sql));
     if (req.method === "POST" && p === "/api/onboarding/dropped") return send(await markDropped(sql, setDealDropped, await readBody(req)));
+
+    if (req.method === "GET" && p === "/api/onboarding/practices") return send(await getPractices(sql));
+    if (req.method === "POST" && p === "/api/onboarding/practices") return send(await createPractice(sql, await readBody(req)));
+    if (req.method === "PATCH" && p === "/api/onboarding/practices") return send(await setPracticeOds(sql, await readBody(req)));
+    if (req.method === "DELETE" && p === "/api/onboarding/practices") return send(await removePractice(sql, await readBody(req)));
+    if (req.method === "GET" && p === "/api/onboarding/ods-lookup") {
+      const found = await lookupOds(url.searchParams.get("ods"));
+      return send(found ? { status: 200, body: found } : { status: 404, body: { error: "not found" } });
+    }
+    // HubSpot webhook — same signature check as prod when HUBSPOT_WEBHOOK_SECRET is
+    // set; without it (plain local dev) events are accepted unsigned for testing.
+    if (req.method === "POST" && p === "/api/hubspot/deals") {
+      const raw = await new Promise((ok, no) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => ok(b)); req.on("error", no); });
+      const secret = loadEnv("HUBSPOT_WEBHOOK_SECRET");
+      if (secret && !(await verifyHubspotSignature({ secret, method: "POST", uri: `http://localhost:${PORT}${req.url}`, body: raw,
+        signature: req.headers["x-hubspot-signature-v3"], timestamp: req.headers["x-hubspot-request-timestamp"] }))) {
+        return json(res, 401, { error: "unauthorized" });
+      }
+      const summary = await handleDealStageEvents(sql, makeHubspotReader({ token: loadEnv("HUBSPOT_API_TOKEN") }), JSON.parse(raw || "[]"));
+      return send({ status: 200, body: { ok: true, summary } });
+    }
 
     return json(res, 404, { error: "not found" });
   } catch (e) {

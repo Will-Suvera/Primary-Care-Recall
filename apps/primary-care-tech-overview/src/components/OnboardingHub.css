@@ -658,3 +658,23 @@
 .oh-fillout-head .sub { font-size: 11.5px; color: var(--sv-muted); }
 .oh-fillout-head .oh-back { margin-left: 0; flex-shrink: 0; }
 .oh-fillout-head .sub.ok { color: var(--sv-green); font-weight: 600; }
+
+/* ---- Hub-added practices: "+ New practice" form, New / ODS-missing tags ---- */
+.oh-new-tag { margin-left: 8px; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: var(--sv-r-chip); background: var(--su-surface); color: var(--sv-purple); vertical-align: 1px; white-space: nowrap; }
+.oh-new-tag.warn { background: var(--sv-red-bg); color: var(--sv-red); }
+.oh-btn-live:disabled, .oh-formbtn:disabled { opacity: .5; cursor: default; }
+.oh-newform { width: min(480px, 92vw); }
+.oh-newform label { display: block; margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--sv-text); }
+.oh-newform label .opt { font-weight: 400; color: var(--sv-muted); }
+.oh-newform input, .oh-newform select, .oh-odsmissing input {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 5px; font-family: inherit; font-size: 13px;
+  padding: 8px 10px; border-radius: var(--sv-r-inner); border: 1px solid var(--sv-border); background: var(--sv-card); color: var(--sv-text);
+}
+.oh-newform-hint { min-height: 16px; margin: -6px 0 10px; font-size: 11.5px; color: var(--sv-muted); }
+.oh-newform-hint .ok { color: var(--sv-green); font-weight: 600; }
+.oh-newform-hint .bad { color: var(--sv-red); font-weight: 600; }
+.oh-newform-err { margin: 0 0 14px; padding: 8px 12px; border-radius: var(--sv-r-inner); background: var(--sv-red-bg); border: 1px solid var(--sv-red-line); color: var(--sv-red); font-size: 12.5px; font-weight: 600; }
+.oh-odsmissing { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; padding: 12px 16px; border-radius: var(--sv-r-inner); background: var(--sv-red-bg); border: 1px solid var(--sv-red-line); font-size: 12.5px; color: var(--sv-text); }
+.oh-odsmissing > div { flex: 1 1 280px; }
+.oh-odsmissing .oh-newform-hint { margin: 4px 0 0; }
+.oh-odsmissing input { width: 150px; margin-top: 0; }

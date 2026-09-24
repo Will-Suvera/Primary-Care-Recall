@@ -64,6 +64,28 @@ Repo → *Settings* → *Secrets and variables* → *Actions*:
 - `VITE_GOOGLE_CLIENT_ID` — the OAuth client id (baked into the build for sign-in).
 - `HUBSPOT_API_TOKEN`, `NOTION_API_TOKEN` — likely already set (used by the data refresh).
 
+## HubSpot → Hub auto-create (webhook, you)
+
+When a Planner deal moves to **DPA Signed Onboard Ready**, HubSpot calls
+`POST /api/hubspot/deals` and the practice appears in the Onboarding Hub within
+seconds (Neon `onboarding_practices`; the Hub re-polls every minute). Deals whose
+company has no ODS show as **ODS missing** until someone adds it in the Hub.
+Every delivery (incl. rejections) is logged to Neon `hubspot_webhook_log`.
+
+1. HubSpot → Settings → Integrations → **Private Apps** → the app whose token is
+   `HUBSPOT_API_TOKEN` → **Webhooks** tab.
+   - Target URL: `https://planner-onboarding.pages.dev/api/hubspot/deals`
+   - Create subscription: object **Deals**, event **Property changed**, property **`dealstage`**. Activate it.
+2. Same app → **Auth** tab → copy the **Client secret**.
+3. Pages project → Settings → Variables and Secrets (Production):
+   - `HUBSPOT_WEBHOOK_SECRET` = that client secret (verifies HubSpot's v3 signature)
+   - `HUBSPOT_API_TOKEN` = the app token (needs deals + companies read — already granted)
+4. Test: move a test deal into DPA Signed Onboard Ready, then check
+   `select * from hubspot_webhook_log order by id desc limit 5;` in Neon.
+
+Manual adds ("+ New practice" on the Hub home) need no setup — Hub only, nothing
+is written to HubSpot.
+
 ## Deploy
 
 Push to `main` (or run the workflow manually). `deploy-planner-cf.yml` regenerates

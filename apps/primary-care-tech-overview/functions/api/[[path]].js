@@ -14,6 +14,8 @@
 //   HUBSPOT_API_TOKEN   (optional) — only used when the sync flags below are set
 //   HUBSPOT_NOTES_SYNC  (optional) — truthy → push notes to the HubSpot deal
 //   HUBSPOT_DEAL_WRITE  (optional) — truthy → mark-live moves the HubSpot deal stage
+//   HUBSPOT_WEBHOOK_SECRET (for /api/hubspot/deals) — the private app's CLIENT SECRET,
+//                        used to verify HubSpot's v3 webhook signature. Unset → 503.
 //
 // This is the ONLY gate (no Cloudflare Access in front): every read AND write
 // requires a valid @suvera.co.uk Google token, so the deal/CS data stays private.
@@ -22,6 +24,8 @@ import {
   makeNotesHub, makeDealLiveSetter, makeDealDroppedSetter, firstNameFromEmail,
   getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
+  getPractices, createPractice, setPracticeOds, removePractice, lookupOds,
+  verifyHubspotSignature, makeHubspotReader, handleDealStageEvents,
 } from "../../api/onboarding-core.mjs";
 // The dashboard data (generated fresh in CI) is bundled into this Function and
 // served only to authenticated users — NOT a public static asset, so the internal
@@ -128,6 +132,33 @@ async function handleOmniRecalls(req, sql, url, pathKey) {
   return J({ status: 200, body: { ok: true, ...inserted[0] } });
 }
 
+// --- HubSpot webhook: /api/hubspot/deals ------------------------------------
+// The HubSpot private app subscribes to deal.propertyChange on `dealstage` and
+// POSTs batches here. Authenticated by HubSpot's v3 signature (not Google), so a
+// deal moving to "DPA Signed Onboard Ready" lands in the Hub within seconds.
+// Every delivery is logged to `hubspot_webhook_log` (rejections too) so a
+// misconfigured subscription is visible rather than silent.
+async function handleHubspotDeals(req, sql, env) {
+  if (req.method !== "POST") return err({ error: "method not allowed" }, 405);
+  const body = await req.text();
+  const log = (status) => sql`insert into hubspot_webhook_log (status, body) values (${status}, ${body.slice(0, 20000)})`;
+  if (!env.HUBSPOT_WEBHOOK_SECRET || !env.HUBSPOT_API_TOKEN) {
+    await log("rejected: HUBSPOT_WEBHOOK_SECRET / HUBSPOT_API_TOKEN not set");
+    return err({ error: "webhook not configured" }, 503);
+  }
+  const ok = await verifyHubspotSignature({
+    secret: env.HUBSPOT_WEBHOOK_SECRET, method: "POST", uri: req.url, body,
+    signature: req.headers.get("x-hubspot-signature-v3"),
+    timestamp: req.headers.get("x-hubspot-request-timestamp"),
+  });
+  if (!ok) { await log("rejected: bad signature"); return err({ error: "unauthorized" }, 401); }
+  let events;
+  try { events = JSON.parse(body); } catch { await log("rejected: invalid JSON"); return err({ error: "invalid JSON" }, 400); }
+  const summary = await handleDealStageEvents(sql, makeHubspotReader({ token: env.HUBSPOT_API_TOKEN }), events);
+  await log("ok: " + JSON.stringify(summary).slice(0, 500));
+  return J({ status: 200, body: { ok: true, summary } });
+}
+
 export async function onRequest(context) {
   const { request: req, env } = context;
   // Pages Functions expose env per-request, so build the clients here (not at module scope).
@@ -149,6 +180,16 @@ export async function onRequest(context) {
     try {
       return await handleOmniRecalls(req, sql, url, omni[1] ? decodeURIComponent(omni[1]) : "");
     } catch (e) {
+      return err({ error: String(e) }, 500);
+    }
+  }
+
+  if (/\/api\/hubspot\/deals\/?$/.test(url.pathname)) {
+    try {
+      return await handleHubspotDeals(req, sql, env);
+    } catch (e) {
+      // 5xx → HubSpot retries the delivery (up to 10 times over ~24h)
+      try { await sql`insert into hubspot_webhook_log (status, body) values (${"error: " + String(e)}, null)`; } catch { /* ignore */ }
       return err({ error: String(e) }, 500);
     }
   }
@@ -177,6 +218,11 @@ export async function onRequest(context) {
       if (sub === "/live") return J(await getLive(sql));
       if (sub === "/hidden") return J(await getHiddenActivity(sql));
       if (sub === "/dropped") return J(await getDropped(sql));
+      if (sub === "/practices") return J(await getPractices(sql));
+      if (sub === "/ods-lookup") {
+        const found = await lookupOds(url.searchParams.get("ods"));
+        return J(found ? { status: 200, body: found } : { status: 404, body: { error: "not found" } });
+      }
       return J(await getCurrent(sql));
     }
 
@@ -221,6 +267,14 @@ export async function onRequest(context) {
       const auth = await gate(); if (!auth) return unauth();
       const body = await req.json();
       return J(await markDropped(sql, setDealDropped, { ods: body.ods, deal_id: body.deal_id ?? null, by: firstNameFromEmail(auth.email) || body.by || null }));
+    }
+    if (sub === "/practices" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
+      const auth = await gate(); if (!auth) return unauth();
+      const body = await req.json();
+      const by = firstNameFromEmail(auth.email) || null;
+      if (req.method === "POST") return J(await createPractice(sql, { ...body, by }));
+      if (req.method === "PATCH") return J(await setPracticeOds(sql, { ...body, by }));
+      return J(await removePractice(sql, { id: body.id }));
     }
     return err({ error: "not found" }, 404);
   } catch (e) {
