@@ -35,10 +35,16 @@ on:
     # Safe to run often: kpi_history is keyed per date and the Notion sync upserts.
     - cron: '*/30 * * * *'
   workflow_dispatch: {}
+  # Fired by refresh-waitlist.yml at the end of each ~5-min cycle, so the overview
+  # stays within minutes of HubSpot/Notion. The cron above is the safety net.
+  repository_dispatch:
+    types: [planner-refresh]
 
+# Don't cancel: with a ~5-min trigger and ~4-min runs, cancelling could starve every
+# deploy. GitHub keeps at most one pending run in the group, so triggers collapse.
 concurrency:
   group: deploy-planner-cf
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-deploy:

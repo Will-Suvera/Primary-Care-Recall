@@ -86,6 +86,23 @@ jobs:
           done
           echo "Push failed after 3 attempts" && exit 1
 
+      - name: Trigger Planner overview refresh
+        # Piggybacks on this ~5-min loop so the Planner overview (deploy-planner-cf.yml)
+        # refreshes as often. Best-effort: a failure here must not break the map refresh.
+        if: always()
+        continue-on-error: true
+        env:
+          PAT_DISPATCH: ${{ secrets.PAT_DISPATCH }}
+          REPO:         ${{ github.repository }}
+        run: |
+          if [ -z "$PAT_DISPATCH" ]; then echo "PAT_DISPATCH not set - skipping"; exit 0; fi
+          http=$(curl -sS -o /tmp/planner-dispatch.out -w "%{http_code}" \
+            -X POST "https://api.github.com/repos/${REPO}/dispatches" \
+            -H "Authorization: token ${PAT_DISPATCH}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"event_type":"planner-refresh"}' || echo "curl-failed")
+          echo "planner dispatch http=${http}"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
