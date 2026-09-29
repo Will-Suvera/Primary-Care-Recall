@@ -30,7 +30,10 @@ on:
       - 'pipeline/**'
       - '.github/workflows/deploy-planner-cf.yml'
   schedule:
-    - cron: '30 6 * * *'   # daily: regenerate data + redeploy (deal stages move a few times a week)
+    # Every 30 min: regenerate data + redeploy. GitHub delays scheduled runs (the old
+    # daily 06:30 slot routinely fired ~12:00), so the effective cadence is ~30-60 min.
+    # Safe to run often: kpi_history is keyed per date and the Notion sync upserts.
+    - cron: '*/30 * * * *'
   workflow_dispatch: {}
 
 concurrency:
