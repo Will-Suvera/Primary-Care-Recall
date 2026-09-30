@@ -3814,5 +3814,25 @@
       "waitlist": 6032203,
       "pipeline": 6818364
     }
+  },
+  {
+    "date": "2026-09-30",
+    "timestamp": "2026-09-30T00:06:07.940441+00:00",
+    "practices": {
+      "live_planner": 26,
+      "live_full_planner": 35,
+      "live": 61,
+      "waitlist": 552,
+      "pipeline": 613,
+      "total": 6378,
+      "coverage_pct": 9.61
+    },
+    "patients": {
+      "live_planner": 273231,
+      "live_full_planner": 512930,
+      "live": 786161,
+      "waitlist": 6032203,
+      "pipeline": 6818364
+    }
   }
 ]
