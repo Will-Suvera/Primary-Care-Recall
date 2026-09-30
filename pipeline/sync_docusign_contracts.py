@@ -258,6 +258,36 @@ def parse_contract(pdf_bytes):
         m = re.search(r"Joining Schedule.*?Participating Practice\s*:?\s*(.+?)\s+(?:ODS|Practice )?Code", text)
         if m:
             out["practices"] = [{"list_size": None, "name": m.group(1).strip()}]
+    # ---- Buyer/Customer agreement (v5+, Sept 2026): "Schedule 1 - Parties and
+    # Commercial Details" names the Buyer, then a Customer table that closes on
+    # "Totals: 14,427 £10,820.25". Schedule 1 wins over the clause wording
+    # (clause 2.1 always says "24 months, or ... 36 months").
+    i = text.find("Schedule 1 - Parties and Commercial Details")
+    if i >= 0 and "Buyer Name" in text[i:]:
+        s1 = re.sub(r"Docusign Envelope ID: [0-9A-Fa-f-]{36}(?: \d{1,2}/\d{1,2}/\d{4} \| \d{1,2}:\d{2} \w+)?",
+                    "", text[i:])
+        s1 = re.sub(r"\s+", " ", s1)
+        m = re.search(r"Buyer Name\s+(.+?)\s+Buyer Address", s1)
+        if m:
+            out["customer"] = m.group(1).strip()
+        m = re.search(r"Commencement Date\s*(.*?)\s*Large Register Discount", s1)
+        if m:
+            v = m.group(1).strip()
+            out["commencement"] = "" if "@" in v else v[:160]
+        m = re.search(r"Initial Term\s+(\d+) months", s1)
+        if m:
+            out["term_months"] = int(m.group(1))
+        # the Free Trial row, not "(21 December 2026 to 20 December 2028)" in the Initial Term row
+        m = re.search(r"Free Trial\s+(?!\()[^£(]{0,120}?\bto (\d{1,2} \w+ \d{4})", s1)
+        if m:
+            out["free_until"] = m.group(1)
+        m = re.search(r"Totals:\s*([\d,]{4,})\s+£\s?([\d,]+(?:\.\d+)?)", s1)
+        if m:
+            out["register"] = int(m.group(1).replace(",", ""))
+            out["annual_fee"] = float(m.group(2).replace(",", ""))
+            out["annual_fee_y2"] = None
+            if out["register"]:  # the agreed (unrounded) rate, e.g. 0.675 where the text says £0.68
+                out["price_y1"], out["price_y2"] = round(out["annual_fee"] / out["register"], 4), None
     out["design_partner"] = bool(re.search(r"design[\s-]*partner", text, re.I))
     out["free_first"] = bool(out["free_until"] or re.search(r"\bfree (?:period|trial)\b", text, re.I))
     return out
