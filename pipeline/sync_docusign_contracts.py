@@ -84,8 +84,9 @@ ODS_RE = re.compile(r"\b[A-Z]\d[0-9A-Z]{4,5}\b")
 FINANCE_SHEET_ID = "1js7pGfDnyOdyq5fRPetXflEAx94SUmnltkfO-lAvOSc"  # Primary/Recall Contracts
 FINANCE_TAB = "API/WG"
 FINANCE_TAB_GID = 1347448816
-FINANCE_HEADERS = ["Legal name", "Commencement date", "1st Revenue Month", "Expected go-live date",
-                   "Years (initial term)", "Price per patient (exc VAT)", "Monthly price (exc VAT)",
+FINANCE_HEADERS = ["Legal name", "Type", "Practice Number", "Commencement date", "1st Revenue Month",
+                   "Expected go-live date", "Years (initial term)", "Price per patient (exc VAT)",
+                   "Monthly price (exc VAT)",
                    "1st invoice value (signed → go-live, roundup)", "ARR", "Y1 price (exc VAT)",
                    "Y2 price (exc VAT)", "Register size", "Notes", "Contract PDF"]
 
@@ -711,10 +712,26 @@ def _parse_date(s, year_hint=None):
     return None
 
 
-def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links=None):
-    """One API/WG row, using the head of finance's own formulas (columns G, H, I
-    reference the row) so the tab reads exactly like the manual one."""
+def _col(i):
+    s = ""
+    i += 1
+    while i:
+        i, rem = divmod(i - 1, 26)
+        s = chr(65 + rem) + s
+    return s
+
+
+def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links=None, headers=None):
+    """One API/WG row, using the head of finance's own formulas so the tab reads
+    exactly like the manual one. Cells are placed by the tab's own header row
+    (finance adds columns, e.g. "Type" / "Practice Number" in Sept 2026), and
+    the formulas look their columns up by header too."""
     r = row_no
+    headers = [str(h).strip() for h in (headers or FINANCE_HEADERS)]
+    c = {h: _col(i) for i, h in enumerate(headers)}
+    COMM, YRS, Y1, GOLIVE, MONTHLY = (c.get(h, "?") for h in (
+        "Commencement date", "Years (initial term)", "Y1 price (exc VAT)",
+        "Expected go-live date", "Monthly price (exc VAT)"))
     signed = _parse_date(signed_date) if signed_date else None
     comm = _parse_date(parsed["commencement"], signed.year if signed else None) or signed
     months = parsed["term_months"]
@@ -758,13 +775,34 @@ def finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links
     L = links or {}
     pdf_link = (f'=HYPERLINK("{L["drive_file"]}","Open PDF (Drive)")' if L.get("drive_file") else
                 f'=HYPERLINK("{L["hubspot"]}","Open deal (HubSpot)")' if L.get("hubspot") else "")
-    first_rev = (f'=IF(ISNUMBER(B{r}),TEXT(B{r},"mmm-yy"),"")' if not free_until
-                 else (free_until + timedelta(days=1)).strftime("%b-%y"))
-    return [parsed["customer"] or "", d(comm), first_rev, "",
-            years, ppp, f"=IF(ISNUMBER(J{r}),ROUND(J{r}/12,2),\"\")",
-            f'=IF(ISNUMBER(D{r}),ROUND(ROUNDUP((D{r}-B{r})/31,0)*G{r},2),"")',
-            f'=IF(AND(ISNUMBER(J{r}),ISNUMBER(E{r})),J{r}/MIN(1,E{r}),"")',
-            y1, y2, reg or "", " | ".join(notes), pdf_link]
+    first_rev = (f'=IF(ISNUMBER({COMM}{r}),TEXT({COMM}{r},"mmm-yy"),"")' if not free_until
+                 else (lambda f: f'=TEXT(DATE({f.year},{f.month},1),"mmm-yy")')(free_until + timedelta(days=1)))
+    # (a typed "Dec-26" is read by Sheets as 26 December)
+    n_practices = len(covered) or len(parsed["practices"]) or 1
+    is_pcn = n_practices > 1 or bool(re.search(r"\bPCN\b", parsed["customer"] or ""))
+    cells = {
+        "Legal name": parsed["customer"] or "",
+        "Type": "PCN" if is_pcn else "GP",
+        "Practice Number": n_practices,
+        "Commencement date": d(comm),
+        "1st Revenue Month": first_rev,
+        "Expected go-live date": "",
+        "Years (initial term)": years,
+        "Price per patient (exc VAT)": ppp,
+        "Monthly price (exc VAT)": f'=IF(ISNUMBER({Y1}{r}),ROUND({Y1}{r}/12,2),"")',
+        "1st invoice value (signed → go-live, roundup)":
+            f'=IF(ISNUMBER({GOLIVE}{r}),ROUND(ROUNDUP(({GOLIVE}{r}-{COMM}{r})/31,0)*{MONTHLY}{r},2),"")',
+        "ARR": f'=IF(AND(ISNUMBER({Y1}{r}),ISNUMBER({YRS}{r})),{Y1}{r}/MIN(1,{YRS}{r}),"")',
+        "Y1 price (exc VAT)": y1,
+        "Y2 price (exc VAT)": y2,
+        "Register size": reg or "",
+        "Notes": " | ".join(notes),
+        "Contract PDF": pdf_link,
+    }
+    missing = [h for h in cells if h not in headers and cells[h] not in ("", None)]
+    if missing:
+        print(f"  WARN: finance tab has no column for {missing} — left off the row")
+    return [cells.get(h, "") for h in headers]
 
 
 def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, links=None):
@@ -774,35 +812,44 @@ def sheet_append(parsed, covered, envelope_id, signed_date, enrich, dry_run, lin
         print(f"  WARN: finance sheet skipped — {str(e)[:120]}")
         return
     vals = svc.spreadsheets().values()
-    existing = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:N").execute().get("values", [])
+    existing = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:Z").execute().get("values", [])
     if not existing:
         vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A1",
                     valueInputOption="RAW", body={"values": [FINANCE_HEADERS]}).execute()
         existing = [FINANCE_HEADERS]
-    if any(len(row) >= 13 and envelope_id in row[12] for row in existing):
+    headers = [str(h).strip() for h in existing[0]]
+    notes_i = headers.index("Notes") if "Notes" in headers else None
+
+    def notes_of(row):
+        return str(row[notes_i]) if notes_i is not None and len(row) > notes_i else ""
+    if any(envelope_id in notes_of(row) for row in existing):
         print(f"  finance sheet: envelope {envelope_id} already on {FINANCE_TAB}")
         return
-    # The MRR/ARR summary block sits under the data behind one blank row. New
-    # rows go into a row INSERTED at that blank row, so the block (and the
-    # SUM/AVERAGE ranges, which end on the blank row) shift down and expand.
+    # The MRR/ARR summary block sits under the data behind blank row(s), and its
+    # SUM/AVERAGE ranges end on the last blank row. A new row takes the first
+    # blank row after the data; only when none is left is a row INSERTED above
+    # the block, so the block (and its ranges) shift down and expand.
     summary_at = next((i + 1 for i, row in enumerate(existing)
-                       if len(row) > 5 and str(row[5]).strip() == "MRR"), None)
+                       if any(str(v).strip() == "MRR" for v in row)), None)
     # A row for the same customer that came from an uncertified copy (envelope
     # "drive-…" / "DRAFT…") is replaced in place by the DocuSign original.
     replace_at = next((i + 1 for i, row in enumerate(existing[1:], start=1)
                        if row and norm_name(str(row[0])) == norm_name(parsed["customer"] or "")
-                       and len(row) >= 13 and not re.search(r"envelope [0-9A-F]{8}-", row[12])), None)
+                       and notes_of(row) and not re.search(r"envelope [0-9A-F]{8}-", notes_of(row))), None)
+    last_data = max((i + 1 for i, row in enumerate(existing[:(summary_at or len(existing) + 1) - 1])
+                     if row and str(row[0]).strip()), default=1)
+    insert = False
     if replace_at:
         row_no = replace_at
-    elif summary_at:
-        row_no = summary_at - 1  # the blank gap row
+    elif summary_at and last_data + 1 >= summary_at - 1:
+        row_no, insert = summary_at - 1, True  # only the gap row left: insert above the block
     else:
-        row_no = max((i + 1 for i, row in enumerate(existing) if row and str(row[0]).strip()), default=1) + 1
-    row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links)
+        row_no = last_data + 1
+    row = finance_row(parsed, covered, envelope_id, signed_date, enrich, row_no, links, headers)
     if dry_run:
-        print(f"  DRY RUN finance sheet: would {'replace' if replace_at else 'insert' if summary_at else 'append'} row {row_no}: {row}")
+        print(f"  DRY RUN finance sheet: would {'replace' if replace_at else 'insert' if insert else 'write'} row {row_no}: {row}")
         return
-    if summary_at and not replace_at:
+    if insert:
         svc.spreadsheets().batchUpdate(spreadsheetId=FINANCE_SHEET_ID, body={"requests": [
             {"insertDimension": {"range": {"sheetId": FINANCE_TAB_GID, "dimension": "ROWS",
                                            "startIndex": row_no - 1, "endIndex": row_no},
@@ -827,14 +874,19 @@ def refile_drive(pdf, envelope_id, signed_date, enrich, dry_run):
         print(f"  Notion: Drive folder link on {row['name']}")
     try:
         vals = _sheets_service().spreadsheets().values()
-        rows = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:N").execute().get("values", [])
+        rows = vals.get(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!A:Z",
+                        valueRenderOption="FORMULA").execute().get("values", [])
+        headers = [str(h).strip() for h in rows[0]] if rows else []
+        ni, li = headers.index("Notes"), headers.index("Contract PDF")
         for i, row in enumerate(rows, start=1):
-            if len(row) >= 13 and envelope_id in row[12]:
-                notes = row[12] if "Contract folder:" in row[12] else row[12] + f" | Contract folder: {folder_url}"
-                link = f'=HYPERLINK("{file_url}","Open PDF (Drive)")' if file_url else row[13] if len(row) > 13 else ""
+            cur = str(row[ni]) if len(row) > ni else ""
+            if envelope_id in cur:
+                notes = cur if "Contract folder:" in cur else cur + f" | Contract folder: {folder_url}"
+                link = f'=HYPERLINK("{file_url}","Open PDF (Drive)")' if file_url else row[li] if len(row) > li else ""
                 if not dry_run:
-                    vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!M{i}:N{i}",
-                                valueInputOption="USER_ENTERED", body={"values": [[notes, link]]}).execute()
+                    for col, v in ((ni, notes), (li, link)):
+                        vals.update(spreadsheetId=FINANCE_SHEET_ID, range=f"'{FINANCE_TAB}'!{_col(col)}{i}",
+                                    valueInputOption="USER_ENTERED", body={"values": [[v]]}).execute()
                 print(f"  finance sheet: row {i} now links to the Drive PDF")
     except Exception as e:
         print(f"  WARN: finance sheet link refresh skipped — {str(e)[:120]}")
