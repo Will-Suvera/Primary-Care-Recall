@@ -315,6 +315,21 @@ html.tv .leaflet-control-zoom { display: none; }
 /* Paid practices keep their ink ring while pulsing — the tier outranks the activity. */
 .marker-flashing.marker-gold { stroke: var(--su-cat-paid-ring) !important; fill: var(--su-cat-paid) !important; }
 
+/* ---- Map filter chips (top-left, beside the zoom control) ---- */
+.map-filter { position: absolute; top: 3rem; left: 4rem; z-index: 851; display: flex; flex-wrap: wrap; gap: .25rem; padding: .25rem; border-radius: var(--su-r-input); max-width: calc(100% - 4rem - 25rem); }
+.map-filter-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .65rem; border-radius: var(--su-r-chip); font-size: .75rem; font-weight: 600; color: var(--su-muted); white-space: nowrap; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.map-filter-btn:hover { background: var(--su-surface); color: var(--su-ink); }
+.map-filter-btn.active { background: var(--su-brand); color: var(--su-brand-ink); }
+.map-filter-dot { width: .55rem; height: .55rem; border-radius: 50%; flex-shrink: 0; }
+.map-filter-dot.paid { background: var(--su-cat-paid); box-shadow: 0 0 0 1.5px var(--su-cat-paid-ring); }
+.map-filter-dot.recalling { background: var(--su-good); }
+.map-filter-dot.live { background: var(--su-cat-live); }
+.map-filter-dot.in-progress { background: var(--su-cat-onboarding); }
+.map-filter-dot.signed { background: var(--su-cat-signed); }
+.map-filter-btn.active .map-filter-dot { box-shadow: 0 0 0 1.5px var(--su-card); }
+.map-filter-count { font-size: .68rem; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .7; }
+html.tv .map-filter { display: none; }
+
 /* ---- Practice search (top-right, left of the timeline slider) ---- */
 .map-search { position: absolute; top: 3rem; right: 22rem; z-index: 851; }
 .map-search-btn { display: flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.2rem; padding: 0; border-radius: var(--su-r-input); color: var(--su-ink); transition: background .15s ease; }

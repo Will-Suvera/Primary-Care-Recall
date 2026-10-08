@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { MAP_CENTER, MAP_ZOOM, MARKER_STYLES, ICB_STYLES } from '../constants'
 import MapTopBar from './MapTopBar'
 import MapSearch from './MapSearch'
 import PracticeTicker from './PracticeTicker'
 import BottomStrip from './BottomStrip'
+import MapFilter, { FILTER_BY_KEY, MAP_FILTERS } from './MapFilter'
 
 const snapshotCache = {}
 const BASE = import.meta.env.BASE_URL
@@ -88,6 +89,21 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
   const currentOdsRef = useRef({ paid: paidOds, fullPlanner: fullPlannerOds, inProgress: onboardingOds, waitlist: waitlistOds, active: new Set() })
   const [liveCounted, setLiveCounted] = useState(0)
   const [waitlistCounted, setWaitlistCounted] = useState(0)
+  const [filter, setFilter] = useState('all')
+  const filterRef = useRef(filter)
+  filterRef.current = filter
+
+  // Puts a marker in its status layer, or takes it off the map when the
+  // active filter excludes it. Layer membership is the visibility switch.
+  const syncMarker = useCallback((entry, status, isActive) => {
+    const layers = layersRef.current
+    const show = FILTER_BY_KEY[filterRef.current].match(status, isActive)
+    if (entry.layer === status && entry.shown === show) return
+    if (entry.shown) layers[entry.layer].removeLayer(entry.marker)
+    if (show) layers[status].addLayer(entry.marker)
+    entry.layer = status
+    entry.shown = show
+  }, [])
 
   useEffect(() => {
     const activeSet = new Set(recalls?.active_ods_this_month || [])
@@ -182,12 +198,12 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
     markersRef.current = {}
 
     let live = 0, waitlist = 0
+    const activeSet = new Set(recalls?.active_ods_this_month || [])
     practices.forEach(p => {
       const ods = p.ods.toUpperCase()
       const status = getStatus(ods, paidOds, fullPlannerOds, onboardingOds, waitlistOds)
       if (status === 'fullPlanner') live++
       if (status === 'waitlist') waitlist++
-      const activeSet = recalls?.active_ods_this_month ? new Set(recalls.active_ods_this_month) : new Set()
       const isActive = activeSet.has(ods)
       const markerOpts = { ...MARKER_STYLES[status] }
       // Paid practices keep their gold identity while pulsing; everyone else flashes green.
@@ -199,8 +215,9 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
         const isActive = cur.active ? cur.active.has(ods) : false
         return buildPopupContent(p, currentStatus, isActive)
       })
-      layers[status].addLayer(marker)
-      markersRef.current[ods] = { marker, layer: status, practice: p }
+      const entry = { marker, layer: status, shown: false, practice: p }
+      syncMarker(entry, status, isActive)
+      markersRef.current[ods] = entry
     })
     setLiveCounted(live)
     setWaitlistCounted(waitlist)
@@ -210,7 +227,7 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
   useEffect(() => {
     if (Object.keys(markersRef.current).length === 0) return
 
-    const layers = layersRef.current
+    const activeSet = currentOdsRef.current.active
     let live = 0, waitlist = 0
 
     for (const [ods, entry] of Object.entries(markersRef.current)) {
@@ -219,15 +236,30 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
       if (status === 'waitlist') waitlist++
       entry.marker.setStyle(MARKER_STYLES[status])
       entry.marker.setRadius(MARKER_STYLES[status].radius)
-      if (entry.layer !== status) {
-        layers[entry.layer].removeLayer(entry.marker)
-        layers[status].addLayer(entry.marker)
-        entry.layer = status
-      }
+      syncMarker(entry, status, activeSet.has(ods))
     }
     setLiveCounted(live)
     setWaitlistCounted(waitlist)
-  }, [paidOds, fullPlannerOds, onboardingOds, waitlistOds])
+  }, [paidOds, fullPlannerOds, onboardingOds, waitlistOds, syncMarker])
+
+  useEffect(() => {
+    const cur = currentOdsRef.current
+    for (const [ods, entry] of Object.entries(markersRef.current)) {
+      syncMarker(entry, getStatus(ods, cur.paid, cur.fullPlanner, cur.inProgress, cur.waitlist), cur.active.has(ods))
+    }
+  }, [filter, syncMarker])
+
+  const filterCounts = useMemo(() => {
+    const activeSet = new Set(recalls?.active_ods_this_month || [])
+    const counts = Object.fromEntries(MAP_FILTERS.map(f => [f.key, 0]))
+    for (const p of practices) {
+      const ods = p.ods.toUpperCase()
+      const status = getStatus(ods, paidOds, fullPlannerOds, onboardingOds, waitlistOds)
+      const isActive = activeSet.has(ods)
+      for (const f of MAP_FILTERS) if (f.match(status, isActive)) counts[f.key]++
+    }
+    return counts
+  }, [practices, recalls, paidOds, fullPlannerOds, onboardingOds, waitlistOds])
 
   const debounceRef = useRef(null)
   const { sliderIdx, timelineData } = timeline
@@ -298,6 +330,7 @@ export default function DashboardMap({ practices, liveOds, fullPlannerOds, onboa
         timelineData={timeline.timelineData}
       />
       <BottomStrip recalls={recalls} />
+      <MapFilter value={filter} onChange={setFilter} counts={filterCounts} />
       <MapSearch practices={practices} onSelect={handleSearchSelect} />
       <MapTopBar
         liveCount={liveCount}
