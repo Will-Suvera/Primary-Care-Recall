@@ -4277,22 +4277,22 @@
   },
   {
     "date": "2026-10-23",
-    "timestamp": "2026-10-23T17:58:55.338824+00:00",
+    "timestamp": "2026-10-23T18:05:07.821018+00:00",
     "practices": {
       "live_planner": 26,
       "live_full_planner": 35,
       "live": 61,
-      "waitlist": 587,
-      "pipeline": 648,
+      "waitlist": 581,
+      "pipeline": 642,
       "total": 6378,
-      "coverage_pct": 10.16
+      "coverage_pct": 10.07
     },
     "patients": {
       "live_planner": 273231,
       "live_full_planner": 512930,
       "live": 786161,
-      "waitlist": 6423992,
-      "pipeline": 7210153
+      "waitlist": 6373328,
+      "pipeline": 7159489
     }
   }
 ]
