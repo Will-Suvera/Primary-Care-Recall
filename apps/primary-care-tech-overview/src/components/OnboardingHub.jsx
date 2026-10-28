@@ -696,7 +696,7 @@ const TILES = [
   { k: "all", l: "All practices", n: "total", tip: "Every practice from DPA-signed onward." },
   { k: "in_progress", l: "In progress", n: "in_progress", info: true, tip: "Being set up — onboarding, with no active blocker." },
   { k: "blocked", l: "Blocked", n: "blocked", bad: true, tip: "Has an active blocker (e.g. waiting on labs). Counted here even if otherwise live, so the tiles add up to All." },
-  { k: "live_nr", l: "Live", n: "live_nr", good: true, tip: "Live on Planner but not yet recalling — fewer than 5 recalls this financial year." },
+  { k: "live_nr", l: "Live", n: "live_nr", good: true, tip: "Live on Suvera Recall but not yet recalling — fewer than 5 recalls this financial year." },
   { k: "recalling", l: "Recalling", n: "recalling", good: true, tip: "Live and actively recalling — 5+ recalls this financial year." },
 ];
 // Mutually exclusive + exhaustive (sum to All). Blocked takes precedence so the

@@ -8,6 +8,7 @@ import { buildLir, DEFAULT_WEEKS, MIN_WEEK_RECALLS, STATUS, WEEKS_NEEDED, WINDOW
 
 const fmtMonth = (ym) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" });
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const monthsTo = (d, today) => Math.max(0, Math.round((new Date(`${d}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / (30.44 * 86400000)));
 const daysAgo = (d, today) => Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${d}T00:00:00Z`)) / 86400000);
 // single-hue sequential (brand purple); ink text until the fill is dark enough for white
 // Paid = "PAID -" / "PAID (Trial First) -" on the HubSpot deal; freemium = everyone else
@@ -16,7 +17,7 @@ const heat = (p) => (p >= 75 ? 4 : p >= 50 ? 3 : p >= 25 ? 2 : p > 0 ? 1 : 0);
 
 function cellTitle(c, cohort, need) {
   const miss = cohort.members.map((p) => p.name).filter((n) => !c.hitNames.includes(n));
-  return `${fmtMonth(c.month)} · month ${c.k} after signing\n${c.hit} of ${c.of} used Planner in ≥${need} of the last ${WINDOW} weeks` +
+  return `${fmtMonth(c.month)} · month ${c.k} after signing\n${c.hit} of ${c.of} used Suvera Recall in ≥${need} of the last ${WINDOW} weeks` +
     (c.hitNames.length ? `\nOn track: ${c.hitNames.join(", ")}` : "") + (miss.length ? `\nNot: ${miss.join(", ")}` : "");
 }
 
@@ -38,6 +39,8 @@ export default function LirCohort({ lir, generatedAt }) {
     );
   }
   const watch = showAll ? r.watch : r.watch.filter((p) => p.status !== "on_track");
+  const yearOut = new Date(`${today}T00:00:00Z`); yearOut.setUTCFullYear(yearOut.getUTCFullYear() + 1);
+  const renewSoon = r.watch.filter((p) => p.contract && p.contract.renews <= yearOut.toISOString().slice(0, 10));
   // one-line takeaway: the typical and best share of a signing month that became regular users
   const filled = r.cohorts.flatMap((c) => c.cells.filter((x) => !x.noData && c.n));
   const pcts = filled.map((x) => x.pct).sort((a, b) => a - b);
@@ -55,15 +58,15 @@ export default function LirCohort({ lir, generatedAt }) {
           <h2 className="ov-card-title">Leading indicator of retention</h2>
           <p className="ov-sub">
             <b>What is this?</b> A leading indicator of retention (LIR) is an early habit that predicts whether a customer
-            will renew (from Mark Roberge, <i>The Science of Scaling</i>). Renewals are a year away; usage we can see today.
-            Ours is <b>using Planner in at least {need} of every {WINDOW} weeks</b> (a week counts with {MIN_WEEK_RECALLS}+
+            will renew. Contracts renew 1–3 years after signing; this lets us predict renewal much sooner, from how
+            practices use the product today. Ours is <b>using Suvera Recall in at least {need} of every {WINDOW} weeks</b> (a week counts with {MIN_WEEK_RECALLS}+
             recalls). Practices with that habit are the ones likely to renew; practices that lose it are early churn
             warnings we can still act on.
           </p>
           <p className="ov-sub">
             <b>How it should look over time:</b> the on-track % going up, churn signals and “never got going” going down,
             and in the table below, numbers rising left to right and newer signing months beating older ones. Once the
-            first contracts reach renewal (from mid-2027), we check that on-track practices really did renew more, and
+            first contracts reach renewal (from April 2027), we check that on-track practices really did renew more, and
             adjust the definition if not.
           </p>
         </div>
@@ -102,6 +105,11 @@ export default function LirCohort({ lir, generatedAt }) {
           <div className="kpi-value su-num">{r.recentRecalls.toLocaleString("en-GB")}</div>
           <div className="kpi-sub">{r.totalRecalls.toLocaleString("en-GB")} since {fmtDay(lir.from)}</div>
         </div>
+        <div className={"kpi" + (renewSoon.some((p) => p.status !== "on_track") ? " bad" : "")}>
+          <div className="kpi-label">Renewing in the next 12 months</div>
+          <div className="kpi-value su-num">{renewSoon.length}</div>
+          <div className="kpi-sub">{renewSoon.filter((p) => p.status === "on_track").length} on track · {renewSoon.filter((p) => p.status !== "on_track").length} at risk</div>
+        </div>
       </div>
 
       <div className="st-h">Do practices become regular users after signing?</div>
@@ -114,7 +122,7 @@ export default function LirCohort({ lir, generatedAt }) {
       {exCell && (
         <p className="st-note lir-howto">
           How to read it: each row is the practices that signed in that month. E.g. <b>{ex.n} practices signed in {fmtMonth(ex.month)}</b> —{" "}
-          {exCell.k} month{exCell.k > 1 ? "s" : ""} later, {exCell.hit} of them ({exCell.pct}%) were using Planner regularly.
+          {exCell.k} month{exCell.k > 1 ? "s" : ""} later, {exCell.hit} of them ({exCell.pct}%) were using Suvera Recall regularly.
           Hover any cell to see which practices.
         </p>
       )}
@@ -123,7 +131,7 @@ export default function LirCohort({ lir, generatedAt }) {
           <thead>
             <tr>
               <th rowSpan={2}>Signed in</th><th rowSpan={2} className="num">Practices<br />signed</th>
-              {cols.length > 0 && <th colSpan={cols.length} className="lir-group">% using Planner regularly, months after signing →</th>}
+              {cols.length > 0 && <th colSpan={cols.length} className="lir-group">% using Suvera Recall regularly, months after signing →</th>}
             </tr>
             <tr>
               {cols.map((k) => <th key={k} className="num">{k === 1 ? "1 month" : `${k} months`}</th>)}
@@ -153,7 +161,7 @@ export default function LirCohort({ lir, generatedAt }) {
       <p className="st-note">
         “Regularly” = recalls in at least {need} of the last {WINDOW} weeks, checked at the end of each month. The current
         month is left out until it's complete. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
-        recalling with no Planner deal in HubSpot are grouped by the month of their first recall.
+        recalling with no Suvera Recall deal in HubSpot are grouped by the month of their first recall.
       </p>
 
       <div className="st-h lir-watch-h">
@@ -164,7 +172,7 @@ export default function LirCohort({ lir, generatedAt }) {
         <thead>
           <tr>
             <th>Practice</th><th>Signal</th><th className="num">Signed</th><th className="num">Last recall</th><th className="num">Recalls<br />last {WINDOW} wks</th><th className="num">Recalls<br />since {fmtDay(lir.from)}</th>
-            <th className="num">Users</th><th>Last 12 weeks</th>
+            <th className="num">Users</th><th className="num">Renews</th><th>Last 12 weeks</th>
           </tr>
         </thead>
         <tbody>
@@ -172,7 +180,7 @@ export default function LirCohort({ lir, generatedAt }) {
             <tr key={p.ods}>
               <td>
                 <b>{p.name}</b> {p.paid && <span className="su-status good lir-paid">PAID</span>}
-                <div className="st-faint">{p.ods}{p.patients ? ` · ${p.patients.toLocaleString("en-GB")} patients` : ""}{p.stage === "no_deal" ? " · no Planner deal" : ""}</div>
+                <div className="st-faint">{p.ods}{p.patients ? ` · ${p.patients.toLocaleString("en-GB")} patients` : ""}{p.stage === "no_deal" ? " · no Suvera Recall deal" : ""}</div>
               </td>
               <td>
                 <span className={"su-status " + STATUS[p.status].tone}>{STATUS[p.status].label}</span>
@@ -180,7 +188,7 @@ export default function LirCohort({ lir, generatedAt }) {
               </td>
               <td className="num">
                 {fmtMonth(p.cohort)}
-                {p.signed_approx && <span className="st-faint" title={p.stage === "no_deal" ? "No Planner deal — first recall date used" : "No DPA Signed date in HubSpot — go-live or deal-created date used"}> ~</span>}
+                {p.signed_approx && <span className="st-faint" title={p.stage === "no_deal" ? "No Suvera Recall deal — first recall date used" : "No DPA Signed date in HubSpot — go-live or deal-created date used"}> ~</span>}
               </td>
               <td className={"num" + (p.lastRecall && daysAgo(p.lastRecall, today) > 14 ? " bad" : "")}>
                 {p.lastRecall ? `${daysAgo(p.lastRecall, today)}d ago` : "never"}
@@ -189,6 +197,10 @@ export default function LirCohort({ lir, generatedAt }) {
               <td className="num su-num">{p.totalRecalls.toLocaleString("en-GB")}</td>
               <td className="num su-num" title={p.activeUsers.join("\n") || "nobody in the last 4 weeks"}>
                 {p.activeUsers.length}{p.activeUsers.length === 1 && <span className="st-faint" title="One person doing all the recalls — at risk if they leave or go on leave"> !</span>}
+              </td>
+              <td className={"num" + (p.contract && monthsTo(p.contract.renews, today) <= 6 && p.status !== "on_track" ? " bad" : "")}
+                title={p.contract ? `${p.contract.contract}: ${p.contract.months}-month term from ${fmtDay(p.contract.start)}` : "no contract on the finance tracker"}>
+                {p.contract ? <>{fmtMonth(p.contract.renews.slice(0, 7))}<div className="st-faint">in {monthsTo(p.contract.renews, today)} mo</div></> : "–"}
               </td>
               <td>
                 <div className="lir-strip">
@@ -206,8 +218,9 @@ export default function LirCohort({ lir, generatedAt }) {
       </table>
       <p className="st-note">
         Users = staff who recalled in the last {WINDOW} weeks (hover for who); “!” = one person doing it all.
-        Next step from the book: once the first contracts reach renewal (from mid-2027), check whether practices that
-        were on track actually renewed more often than those that weren't, and tune the bar if not.
+        Renews = end of the initial contract term (1–3 years from commencement), from the finance contracts tracker;
+        red when it's within 6 months and the practice isn't on track. As renewals come in, check that on-track practices
+        renewed more often than the rest, and tune the bar if not.
       </p>
     </section>
   );

@@ -725,7 +725,7 @@ function PracticeBadges({ p }) {
       {p.fy_recalls > 1000 && <em className="badge gold" title=">1,000 recalls this FY">1k+ club</em>}
       {p.no_bloods && <em className="badge quiet" title="recalling but zero bloods automated — pathology not switched on">no bloods</em>}
       {p.gone_quiet && <em className="badge quiet" title="recalled last month, nothing yet this month">quiet this mo</em>}
-      {!p.in_pipeline && <em className="tag" title="no HubSpot Planner deal">no HS deal</em>}
+      {!p.in_pipeline && <em className="tag" title="no HubSpot Suvera Recall deal">no HS deal</em>}
     </>
   );
 }
@@ -1071,7 +1071,7 @@ function PracticePanel({ p, weeklyAvailable }) {
           <h2 className="so-title">{p.name}<PracticeBadges p={p} /></h2>
         </div>
         <div className="so-sync">
-          {p.live ? "Live (onboarding sheet)" : "Not in Live sheet"} · {p.in_pipeline ? "in HubSpot Planner pipeline" : "no HubSpot Planner deal"}
+          {p.live ? "Live (onboarding sheet)" : "Not in Live sheet"} · {p.in_pipeline ? "in HubSpot Suvera Recall pipeline" : "no HubSpot Suvera Recall deal"}
         </div>
         <div className="so-meta">
           <MetaItem label="ODS code" value={p.ods} copy={p.ods} />

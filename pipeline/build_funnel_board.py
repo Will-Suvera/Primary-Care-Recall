@@ -516,6 +516,9 @@ DEAL_ODS_OVERRIDES = {
     # GP practice code (so no list size, no recalls). It's Y04925 (WA5 3AL), per the
     # NHS directory and Omni's ODS Code. 2026-10-28.
     "504997875945": "Y04925",
+    # Brook Medical Centre (Whitfield PCN): HubSpot company carries U36512, not a GP
+    # practice code. It's M83094 (ST6 7NN), per the NHS directory and its contract. 2026-10-28.
+    "520403935443": "M83094",
 }
 
 # Last-ditch ODS fallback for deals with no company code and no attribution
@@ -720,7 +723,9 @@ for d in planner["deals"]:
                      for s in onb_steps]
 
     rows.append({
-        "deal_id": d.get("_id"), "name": name.replace(" - Planner", ""), "ods": ods,
+        # display name: drop the HubSpot "- Planner" suffix in all its hand-typed forms
+        # ("X - Planner", "X- Planner", "X - Freemium Planner"); the product is Suvera Recall
+        "deal_id": d.get("_id"), "name": re.sub(r"\s*-?\s*Planner\s*$", "", name, flags=re.I), "ods": ods,
         "paid": is_paid,
         "stage": key, "stage_label": label, "ehr": ehr,
         "days_in_stage": round(days_in) if days_in is not None else None,
@@ -796,7 +801,7 @@ current_arr = round(sum(r["amount"] for r in signed_rows), 2)
 revenue = {
     "current_arr": current_arr,
     "currency": "GBP",
-    "source": "HubSpot Planner pipeline · signed & paid = deals named \"PAID - …\" (HubSpot amounts elsewhere are quotes, not commitments)",
+    "source": "HubSpot Suvera Recall pipeline · signed & paid = deals named \"PAID - …\" (HubSpot amounts elsewhere are quotes, not commitments)",
     "deal_count": len(signed_rows),
     "deals": [{"name": r["name"], "ods": r.get("ods"), "stage": r["stage"], "amount": r["amount"]}
               for r in signed_rows],
@@ -1147,7 +1152,7 @@ this_week = {
 import csv as _csv, io as _io
 
 
-def _fetch_recalls_sheet(src):
+def _fetch_sheet(src):
     if not re.match(r"https?://|[A-Za-z0-9_-]{30,}$", src):
         return Path(src).read_text(encoding="utf-8-sig")
     m = re.search(r"/d/([A-Za-z0-9_-]+)", src)
@@ -1212,7 +1217,7 @@ lir_by_ods, lir_from, lir_to, lir_source, lir_error = {}, None, None, None, None
 _lir_src = os.environ.get("OMNI_RECALLS_SHEET", "").strip()
 if _lir_src:
     try:
-        lir_by_ods, lir_from, lir_to = parse_recalls_sheet(_fetch_recalls_sheet(_lir_src))
+        lir_by_ods, lir_from, lir_to = parse_recalls_sheet(_fetch_sheet(_lir_src))
         lir_source = "omni_sheet"
     except Exception as _e:
         lir_error = str(_e)[:160]
@@ -1260,6 +1265,57 @@ for _o, _p in lir_by_ods.items():
         "signed": next(iter(_p["days"])), "signed_approx": True,
         "days": _p["days"], "users": _p["users"],
     })
+# --- contract terms -> renewal dates ---
+# Renewals come 1-3 years after commencement, so the LIR above is the early read on
+# them. Source: the finance tracker "Primary/Recall Contracts", tab API/WG (one row
+# per signed contract, written by sync_docusign_contracts.py; read-only here).
+# Practices are matched by the ODS codes in its Notes ("Practices: X (C81047), …"),
+# then by name for PCN rows that list practices without codes.
+CONTRACTS_SHEET = "https://docs.google.com/spreadsheets/d/1js7pGfDnyOdyq5fRPetXflEAx94SUmnltkfO-lAvOSc/edit#gid=1347448816"
+
+
+def parse_contracts(text):
+    """API/WG CSV -> [{"name", "ods": [...], "names": [...], "start", "months", "renews"}]."""
+    out = []
+    for r in _csv.DictReader(_io.StringIO(text)):
+        try:
+            start = datetime.strptime((r.get("Commencement date") or "").strip(), "%d %b %Y").date()
+            months = round(float((r.get("Years (initial term)") or "").strip()) * 12)
+        except ValueError:
+            continue  # blank/total rows, or a money-back-guarantee term with no fixed length
+        if months <= 0:
+            continue
+        notes = r.get("Notes") or ""
+        listed = (re.search(r"Practices:\s*([^|]+)", notes) or [None, ""])[1]
+        y, m = divmod(start.month - 1 + months, 12)
+        renews = start.replace(year=start.year + y, month=m + 1, day=min(start.day, 28))
+        out.append({
+            "name": (r.get("Legal name") or "").strip(), "start": start.isoformat(), "months": months,
+            "renews": renews.isoformat(),
+            "ods": [o.upper() for o in re.findall(r"\(([A-Z]\d[0-9A-Z]{3,4})\)", listed)],
+            "names": [re.sub(r"\s*\([^)]*\)", "", n).strip() for n in listed.split(",") if n.strip()],
+        })
+    return out
+
+
+contracts_error = None
+try:
+    _contracts = parse_contracts(_fetch_sheet(CONTRACTS_SHEET)) if os.environ.get("GOOGLE_SA_JSON") else []
+except Exception as _e:
+    _contracts, contracts_error = [], str(_e)[:160]
+    print(f"  WARN: contracts sheet unreadable ({contracts_error}) — no renewal dates")
+_contract_by_ods, _contract_by_name = {}, {}
+for _c in sorted(_contracts, key=lambda c: c["start"]):  # a later contract (renewal/upgrade) wins
+    _term = {"start": _c["start"], "months": _c["months"], "renews": _c["renews"], "contract": _c["name"]}
+    for _o in _c["ods"]:
+        _contract_by_ods[_o] = _term
+    if not _c["ods"]:  # by name only when the row lists no codes (two Twyfords exist)
+        for _n in _c["names"] + [_c["name"]]:
+            _contract_by_name[_lir_key(_n)] = _term
+for _p in lir_practices:
+    _p["contract"] = _contract_by_ods.get(_p["ods"]) or _contract_by_name.get(
+        _lir_key(PAID_PREFIX_RE.sub("", _p["name"], count=1)))
+
 lir = {"source": lir_source, "error": lir_error, "from": lir_from, "to": lir_to, "practices": lir_practices}
 
 # --- data warnings (source divergence etc.) surfaced on the board itself ---
