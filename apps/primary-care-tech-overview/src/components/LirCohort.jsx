@@ -15,15 +15,54 @@ const daysAgo = (d, today) => Math.round((new Date(`${today}T00:00:00Z`) - new D
 const PLANS = [["all", "All"], ["paid", "Paid"], ["freemium", "Freemium"]];
 const heat = (p) => (p >= 75 ? 4 : p >= 50 ? 3 : p >= 25 ? 2 : p > 0 ? 1 : 0);
 
-function cellTitle(c, cohort, need) {
-  const miss = cohort.members.map((p) => p.name).filter((n) => !c.hitNames.includes(n));
-  return `${fmtMonth(c.month)} · month ${c.k} after signing\n${c.hit} of ${c.of} used Suvera Recall in ≥${need} of the last ${WINDOW} weeks` +
-    (c.hitNames.length ? `\nOn track: ${c.hitNames.join(", ")}` : "") + (miss.length ? `\nNot: ${miss.join(", ")}` : "");
+const PaidChip = ({ p }) => (p.paid ? <span className="su-status good lir-paid">PAID</span> : <span className="lir-free">freemium</span>);
+
+// The panel under the cohort table: who is in the hovered/tapped signing month, and
+// (for a cell) who was using Suvera Recall regularly at that point.
+function CohortDetail({ sel, need }) {
+  if (!sel) return <div className="lir-detail lir-detail-empty">Hover or tap a month or a % to see the practices behind it.</div>;
+  const { cohort: c, cell } = sel;
+  if (!cell) {
+    return (
+      <div className="lir-detail">
+        <div className="lir-detail-h"><b>{c.n} practice{c.n === 1 ? "" : "s"} signed in {fmtMonth(c.month)}</b></div>
+        <ul>
+          {c.members.map((p) => (
+            <li key={p.ods}>
+              <span><b>{p.name}</b> <PaidChip p={p} /></span>
+              <span className="st-faint">
+                {p.stage === "no_deal" ? `first recall ${fmtDay(p.signed.slice(0, 10))}` : `DPA signed ${fmtDay(p.signed.slice(0, 10))}${p.signed_approx ? " (approx.)" : ""}`}
+                {p.contract ? ` · paid contract from ${fmtDay(p.contract.start)}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  const rows = [...cell.rows].sort((a, b) => Number(b.onTrack) - Number(a.onTrack) || (b.used ?? -1) - (a.used ?? -1));
+  return (
+    <div className="lir-detail">
+      <div className="lir-detail-h">
+        <b>Signed {fmtMonth(c.month)}, {cell.k} month{cell.k === 1 ? "" : "s"} later (end of {fmtMonth(cell.month)}):</b>{" "}
+        {cell.hit} of {cell.of} using Suvera Recall regularly ({cell.pct}%)
+      </div>
+      <ul>
+        {rows.map((p) => (
+          <li key={p.ods}>
+            <span>{p.onTrack ? "✓" : "✗"} <b>{p.name}</b> <PaidChip p={p} /></span>
+            <span className={p.onTrack ? "" : "st-faint"}>{p.used ?? "–"} of {WINDOW} weeks used{p.onTrack ? "" : ` (needs ${need})`}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export default function LirCohort({ lir, generatedAt }) {
   const [need, setNeed] = useState(DEFAULT_WEEKS);
   const [plan, setPlan] = useState("all");
+  const [sel, setSel] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const today = (generatedAt || new Date().toISOString()).slice(0, 10);
   const r = useMemo(() => {
@@ -123,7 +162,7 @@ export default function LirCohort({ lir, generatedAt }) {
         <p className="st-note lir-howto">
           How to read it: each row is the practices that signed in that month. E.g. <b>{ex.n} practices signed in {fmtMonth(ex.month)}</b> —{" "}
           {exCell.k} month{exCell.k > 1 ? "s" : ""} later, {exCell.hit} of them ({exCell.pct}%) were using Suvera Recall regularly.
-          Hover any cell to see which practices.
+          Hover or tap any month or % to see the practices in the panel below the table.
         </p>
       )}
       <div className="lir-scroll">
@@ -140,7 +179,10 @@ export default function LirCohort({ lir, generatedAt }) {
           <tbody>
             {r.cohorts.map((c) => (
               <tr key={c.month}>
-                <td><b>{fmtMonth(c.month)}</b></td>
+                <td className={"lir-rowh" + (sel?.cohort.month === c.month && !sel.cell ? " sel" : "")}
+                  onMouseEnter={() => setSel({ cohort: c })} onClick={() => setSel({ cohort: c })}>
+                  <b>{fmtMonth(c.month)}</b>
+                </td>
                 <td className="num su-num">{c.n}</td>
                 {c.cells.length === 0 && <td colSpan={cols.length} className="st-faint lir-toonew">signed too recently to judge</td>}
                 {c.cells.length > 0 && cols.map((k) => {
@@ -148,7 +190,8 @@ export default function LirCohort({ lir, generatedAt }) {
                   if (!cell) return <td key={k} />;
                   if (cell.noData) return <td key={k} className="lir-cell nodata" title={`${fmtMonth(cell.month)}: before the Omni data starts`} />;
                   return (
-                    <td key={k} className={`lir-cell h${heat(cell.pct)}`} title={cellTitle(cell, c, need)}>
+                    <td key={k} className={`lir-cell h${heat(cell.pct)}` + (sel?.cell === cell ? " sel" : "")}
+                      onMouseEnter={() => setSel({ cohort: c, cell })} onClick={() => setSel({ cohort: c, cell })}>
                       <span className="su-num">{cell.pct}%</span>
                     </td>
                   );
@@ -158,6 +201,7 @@ export default function LirCohort({ lir, generatedAt }) {
           </tbody>
         </table>
       </div>
+      <CohortDetail sel={sel && r.cohorts.find((c) => c.month === sel.cohort.month) && sel} need={need} />
       <p className="st-note">
         “Regularly” = recalls in at least {need} of the last {WINDOW} weeks, checked at the end of each month. The current
         month is left out until it's complete. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices

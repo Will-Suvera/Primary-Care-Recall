@@ -714,6 +714,16 @@ tr.row-shaded td { border-bottom-color: var(--su-line); }
 /* ---------- Leading indicator of retention (LirCohort.jsx) ---------- */
 /* single-hue sequential heat in the brand purple; ink text until the fill is dark enough for white */
 .lir-scroll { overflow-x: auto; }
+.lir-rowh { cursor: pointer; }
+.lir-rowh.sel, .lir-rowh:hover { color: var(--su-brand); }
+.lir-table td.lir-cell { cursor: pointer; }
+.lir-cell.sel { outline: 2px solid var(--su-brand); outline-offset: -2px; }
+.lir-detail { margin: 10px 0 4px; padding: 10px 14px; border: 1px solid var(--su-line, var(--su-surface)); border-radius: 10px; background: var(--su-surface); font-size: 13px; min-height: 44px; }
+.lir-detail-empty { color: var(--su-muted); display: flex; align-items: center; }
+.lir-detail-h { margin-bottom: 6px; }
+.lir-detail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lir-detail li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.lir-free { font-size: 10px; color: var(--su-faint); margin-left: 4px; }
 .lir-takeaway { margin: 4px 0 2px; font-size: 14px; color: var(--su-ink); }
 .lir-howto { margin: 0 0 10px; }
 .lir-table th.lir-group { text-align: left; font-weight: 500; color: var(--su-muted); border-bottom: 0; }

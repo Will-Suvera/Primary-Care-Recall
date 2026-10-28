@@ -130,7 +130,12 @@ export function buildLir(lir, { need = DEFAULT_WEEKS, today }) {
       const hits = members.map((p) => usedWeeksAt(p.weeks, w, firstWeek));
       if (hits.every((u) => u == null)) { cells.push({ k, month: m, noData: true }); continue; }
       const hit = members.filter((_, i) => hits[i] != null && hits[i] >= need);
-      cells.push({ k, month: m, hit: hit.length, of: members.length, pct: Math.round((100 * hit.length) / members.length), hitNames: hit.map((p) => p.name) });
+      cells.push({
+        k, month: m, hit: hit.length, of: members.length, pct: Math.round((100 * hit.length) / members.length),
+        hitNames: hit.map((p) => p.name),
+        // per practice: weeks used in the 4 weeks ending that month (for the details panel)
+        rows: members.map((p, i) => ({ name: p.name, ods: p.ods, paid: p.paid, used: hits[i], onTrack: hits[i] != null && hits[i] >= need })),
+      });
     }
     return { month, n: members.length, members, cells };
   });
