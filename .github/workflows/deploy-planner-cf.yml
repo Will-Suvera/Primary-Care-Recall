@@ -13,6 +13,8 @@ name: Deploy Planner (Cloudflare Pages)
 #   HUBSPOT_API_TOKEN      — EU1 Private App token (already used by the refresh workflow)
 #   NOTION_API_TOKEN       — Notion integration shared with the Practice Visits DB (best-effort)
 #   VITE_GOOGLE_CLIENT_ID  — the OAuth client id baked into the build for sign-in
+#   OMNI_RECALLS_SHEET     — URL of the Omni daily-recalls Google Sheet (Retention tab; optional)
+#   GOOGLE_SA_JSON         — service-account key JSON with Viewer access to that sheet
 #
 # Cloudflare Pages project env vars (set in the dashboard, NOT here):
 #   NEON_DATABASE_URL (required), and optionally HUBSPOT_API_TOKEN +
@@ -96,9 +98,19 @@ jobs:
         continue-on-error: true
         run: python3 pipeline/refresh_attribution.py
 
+      # google-auth reads the private Omni recalls sheet as the service account
+      - name: Install Python deps
+        run: pip install --quiet google-auth requests
+
       - name: Build funnel board
         env:
           HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+          # The Google Sheet Omni delivers daily recalls per practice + staff email to
+          # (feeds the Retention tab). Secrets, not repo files: the repo is public and
+          # the sheet holds per-practice data and staff emails. GOOGLE_SA_JSON is the
+          # service-account key JSON; the sheet is shared with that account as Viewer.
+          OMNI_RECALLS_SHEET: ${{ secrets.OMNI_RECALLS_SHEET }}
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
         run: python3 pipeline/build_funnel_board.py
 
       # Push HubSpot/recall facts into the Commercial ▸ Recall Priority List Notion

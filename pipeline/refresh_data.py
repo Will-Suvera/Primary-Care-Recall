@@ -82,6 +82,16 @@ VC_NAME_OVERRIDES = {
     "lodge": "E82014",
     "the lodge": "E82014",
     "the lodge partnership": "E82014",
+    # Omni "Oaklands Medical Centre" is the paying Oaklands deal (N81039, ODS
+    # name "OAKLANDS"). The substring scan matched E85096, a Hounslow practice
+    # literally named "MEDICAL CENTRE", and credited it with Oaklands' recalls.
+    "oaklands medical centre": "N81039",
+    # Names shared by several practices — pinned to the signed customer (contract ODS).
+    "brook medical centre": "M83094",        # Whitfield PCN, Stoke (also C81653 Derby, K83048 Northampton)
+    "riverside medical practice": "H82089",  # Horsham (also A81629 Stockton, G82106 Strood)
+    "modality lewisham": "G85004",
+    "rosedean house": "L82050",              # Rosedean Surgery, OneMedical
+    "the light surgery": "Y02002",           # OneMedical deal "The Light Surgery"
 }
 
 
@@ -1239,7 +1249,7 @@ def refresh_paid_customers():
     """
     print("\n=== Refreshing Paid Customers (HubSpot PAID deals) ===")
     out_path = DATA_DIR / "paid_customers.json"
-    paid_re = re.compile(r"^\s*PAID\b[\s\-–—:]*", re.IGNORECASE)
+    paid_re = re.compile(r"^\s*PAID\b(?:\s*\(trial first\))?[\s\-–—:]*", re.IGNORECASE)
 
     try:
         # CONTAINS_TOKEN "PAID" over-matches (any deal with the word paid);

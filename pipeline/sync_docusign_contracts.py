@@ -28,7 +28,8 @@ register, ARR and the finance formulas for monthly / first-invoice values.
 Auth: GOOGLE_SHEETS_SA_JSON (service-account JSON) or the repo-root key file.
 
 Finally the matched deal is moved to "DPA Signed Onboard Ready" (only from an
-earlier Primary Care Tech Growth stage) and a card is posted to Slack
+earlier Primary Care Tech Growth stage), its name gets the "PAID - " prefix
+(the paying-customer flag for ARR; "PAID (Trial First) - " for an opt-in trial), and a card is posted to Slack
 #recall-growth (SLACK_BOT_TOKEN, SLACK_RECALL_CHANNEL) with buttons for the
 HubSpot deal, the signed PDF on Drive and the DocuSign envelope.
 
@@ -291,6 +292,10 @@ def parse_contract(pdf_bytes):
                 out["price_y1"], out["price_y2"] = round(out["annual_fee"] / out["register"], 4), None
     out["design_partner"] = bool(re.search(r"design[\s-]*partner", text, re.I))
     out["free_first"] = bool(out["free_until"] or re.search(r"\bfree (?:period|trial)\b", text, re.I))
+    # Opt-in trial (Aspiro, Oct 2026): nothing is payable unless the Buyer sends a
+    # Continuation Notice — unlike a free period that rolls into paid automatically.
+    out["opt_in_trial"] = bool(re.search(r"does not convert (?:to a paid term )?automatically|Continuation Notice",
+                                         text, re.I))
     return out
 
 
@@ -467,6 +472,31 @@ def hubspot_advance_stage(deal_id, deal_name, dry_run):
     hs("PATCH", f"/crm/v3/objects/deals/{deal_id}", {"properties": {"dealstage": DPA_SIGNED_STAGE}})
     print(f"  HubSpot: deal '{deal_name}' moved {from_label} -> DPA Signed Onboard Ready")
     return True, from_label
+
+
+PAID_RE = re.compile(r"^\s*PAID\b", re.I)  # "PAID - X" / "PAID X" (hand-renamed deals vary)
+TRIAL_RE = re.compile(r"^\s*TRIAL\b[\s\-–—:]*", re.I)
+
+
+def hubspot_mark_paid(deal_id, deal_name, opt_in_trial, dry_run):
+    """Prefix the deal name with "PAID - " — the flag build_funnel_board.py
+    reads for committed ARR. A Recall agreement is a paying contract (a free
+    period converts automatically); an opt-in trial gets "PAID (Trial First) - "
+    so it still counts as a customer but reads as trial-first (Will's call,
+    2026-10-28 — Aspiro, Colney Hatch). Only Primary Care Tech Growth deals;
+    returns the (possibly new) name."""
+    if not deal_id or not deal_name or PAID_RE.match(deal_name):
+        return deal_name
+    pipeline = hs("GET", f"/crm/v3/objects/deals/{deal_id}?properties=pipeline").get("properties", {}).get("pipeline")
+    if pipeline != PIPELINE_ID:
+        return deal_name
+    new_name = ("PAID (Trial First) - " if opt_in_trial else "PAID - ") + TRIAL_RE.sub("", deal_name, count=1).strip()
+    if dry_run:
+        print(f"  DRY RUN HubSpot: would rename deal '{deal_name}' -> '{new_name}'")
+        return new_name
+    hs("PATCH", f"/crm/v3/objects/deals/{deal_id}", {"properties": {"dealname": new_name}})
+    print(f"  HubSpot: deal renamed '{deal_name}' -> '{new_name}'")
+    return new_name
 
 
 def slack_notify(deal_id, deal_name, parsed, covered, signed_date, links, moved_from, dry_run):
@@ -925,6 +955,10 @@ def process(pdf, envelope_id, signed_date, enrich, icb_code, dry_run):
         moved, moved_from = hubspot_advance_stage(deal_id, deal_name, dry_run)
     except RuntimeError as e:
         print(f"  WARN: could not move deal stage — {str(e)[:200]}")
+    try:
+        deal_name = hubspot_mark_paid(deal_id, deal_name, parsed["opt_in_trial"], dry_run)
+    except RuntimeError as e:
+        print(f"  WARN: could not add the PAID/TRIAL prefix — {str(e)[:200]}")
     try:
         slack_notify(deal_id, deal_name, parsed, covered, signed_date, links, moved_from, dry_run)
     except Exception as e:

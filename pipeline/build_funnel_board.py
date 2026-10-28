@@ -21,7 +21,7 @@ NOW = datetime.now(timezone.utc)
 # Deals for signed, paying contracts are named "PAID - <practice> - Planner".
 # Tolerant of spacing and of a hyphen/en-dash/em-dash/colon separator so a
 # hand-typed rename in HubSpot still registers.
-PAID_PREFIX_RE = re.compile(r"^\s*PAID\b[\s\-–—:]*", re.IGNORECASE)
+PAID_PREFIX_RE = re.compile(r"^\s*PAID\b(?:\s*\(trial first\))?[\s\-–—:]*", re.IGNORECASE)
 
 def get_token():
     t = os.environ.get("HUBSPOT_API_TOKEN", "").strip()
@@ -508,6 +508,14 @@ DEAL_ODS_OVERRIDES = {
     # the code St Neots was mistakenly borrowing (freed by the override above).
     # Confirmed by Will 2026-06-30, matches the onboarding sheet.
     "501204035828": "L82050",
+    # Palfrey Health Centre: attribution joined it under Amaanah (Y01068) — the same
+    # slip as Oakleaf above — so it was showing Amaanah's recalls. Palfrey is M91621
+    # (WS1 4JQ), per the NHS directory and Omni's ODS Code. 2026-10-28.
+    "443006692581": "M91621",
+    # Chapelford Primary Care Centre: HubSpot company carries U45014, which isn't a
+    # GP practice code (so no list size, no recalls). It's Y04925 (WA5 3AL), per the
+    # NHS directory and Omni's ODS Code. 2026-10-28.
+    "504997875945": "Y04925",
 }
 
 # Last-ditch ODS fallback for deals with no company code and no attribution
@@ -1123,8 +1131,141 @@ this_week = {
     "stale_by_owner": sorted(({"owner": o, "count": c} for o, c in _owner_stale.items()), key=lambda x: -x["count"])[:5],
 }
 
+# ---------- leading indicator of retention (Roberge, "The Science of Scaling" ch.4) ----------
+# LIR = P% of signed practices use Planner most weeks (>= K of the last 4 weeks with
+# >= 5 recalls), read as acquisition cohorts (month the DPA was signed). Weekly usage
+# beat "% of list" and "% bulk recall" on the accounts CS knows best: it rates steady
+# single-recallers healthy and a one-off bulk week followed by silence as a churn
+# signal. The week/cohort maths and the K toggle live
+# in the dashboard (src/lir.js); this block supplies per-practice daily recalls and
+# who sent them.
+# Source: a copy of Omni's "Which Practice and which user is recalling" workbook,
+# delivered daily to a private Google Sheet (long format: practice, email, ODS code,
+# date, count; fixed start date, so history never rolls off). OMNI_RECALLS_SHEET =
+# the sheet URL/ID (read with the GOOGLE_SA_JSON service account, which the sheet is
+# shared with) or a local CSV path. Without it the Retention tab says so.
+import csv as _csv, io as _io
+
+
+def _fetch_recalls_sheet(src):
+    if not re.match(r"https?://|[A-Za-z0-9_-]{30,}$", src):
+        return Path(src).read_text(encoding="utf-8-sig")
+    m = re.search(r"/d/([A-Za-z0-9_-]+)", src)
+    sheet_id = m.group(1) if m else src
+    g = re.search(r"[#&?]gid=(\d+)", src)
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={g.group(1) if g else 0}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    sa = os.environ.get("GOOGLE_SA_JSON", "").strip()
+    if sa:
+        from google.oauth2 import service_account
+        import google.auth.transport.requests as _gtr
+        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive.readonly"]
+        creds = (service_account.Credentials.from_service_account_info(json.loads(sa), scopes=scopes) if sa.startswith("{")
+                 else service_account.Credentials.from_service_account_file(sa, scopes=scopes))
+        creds.refresh(_gtr.Request())
+        headers["Authorization"] = f"Bearer {creds.token}"
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as r:
+        text = r.read().decode("utf-8-sig")
+    if text.lstrip().startswith("<"):
+        raise ValueError("got a Google sign-in page — share the sheet with the service account")
+    return text
+
+
+def parse_recalls_sheet(text):
+    """Long-format Omni CSV -> {ODS: {"name", "days": {date: n}, "users": {email: [dates]}}}.
+    Columns are found by header name, so Omni reordering them is harmless. Rows with
+    no ODS code are recalls not tied to a practice and are dropped."""
+    rows = list(_csv.DictReader(_io.StringIO(text)))
+    if not rows:
+        return {}, None, None
+    cols = list(rows[0].keys())
+    pick = lambda *keys: next((c for c in cols if all(k in c.lower() for k in keys)), None)
+    c_ods, c_date, c_email = pick("ods"), pick("date"), pick("email")
+    c_n, c_name = pick("count"), pick("practice", "name")
+    if not (c_ods and c_date and c_n):
+        raise ValueError(f"unexpected columns: {cols}")
+    out, dates = {}, []
+    for r in rows:
+        ods = (r.get(c_ods) or "").strip().upper()
+        day = (r.get(c_date) or "").strip()[:10]
+        if not re.match(r"\d{4}-\d{2}-\d{2}$", day):
+            continue
+        dates.append(day)
+        try:
+            n = int(float((r.get(c_n) or "0").replace(",", "")))
+        except ValueError:
+            n = 0
+        if not ods or ods == "NULL" or not n:
+            continue
+        p = out.setdefault(ods, {"name": (r.get(c_name) or "").strip(), "days": {}, "users": {}})
+        p["days"][day] = p["days"].get(day, 0) + n
+        em = (r.get(c_email) or "").strip().lower() if c_email else ""
+        if em:
+            p["users"].setdefault(em, set()).add(day)
+    for p in out.values():
+        p["days"] = dict(sorted(p["days"].items()))
+        p["users"] = {e: sorted(d) for e, d in sorted(p["users"].items())}
+    return out, (min(dates) if dates else None), (max(dates) if dates else None)
+
+
+lir_by_ods, lir_from, lir_to, lir_source, lir_error = {}, None, None, None, None
+_lir_src = os.environ.get("OMNI_RECALLS_SHEET", "").strip()
+if _lir_src:
+    try:
+        lir_by_ods, lir_from, lir_to = parse_recalls_sheet(_fetch_recalls_sheet(_lir_src))
+        lir_source = "omni_sheet"
+    except Exception as _e:
+        lir_error = str(_e)[:160]
+        print(f"  WARN: Omni recalls sheet unreadable ({lir_error}) — Retention tab will show no data")
+
+# the deal's ODS is the join key; only a deal with NO code falls back to a unique name
+# match (Wistaria). A coded deal never does: the new Twyford (K81070) would otherwise
+# inherit the old Twyford Surgery's (J82116) recalls.
+_lir_key = lambda n: _norm_name(re.sub(r"\b(and|the)\b|&", "", (n or "").lower()))
+_lir_norm2ods = {}
+for _o, _p in lir_by_ods.items():
+    _lir_norm2ods.setdefault(_lir_key(_p["name"]), set()).add(_o)
+
+lir_practices, _lir_used = [], set()
+# two deals on one practice (e.g. a renewal) count once: paid, then live, first
+for r in sorted(rows, key=lambda r: (not r.get("paid"), r["stage"] != "live")):
+    if r["stage"] not in ("dpa_signed", "live"):
+        continue
+    _o = (r.get("ods") or "").upper()
+    if not _o:
+        _c = _lir_norm2ods.get(_lir_key(PAID_PREFIX_RE.sub("", re.sub(r"^\s*TRIAL\b[\s\-–—:]*", "", r["name"], flags=re.I), count=1).replace(" - Planner", "")))
+        if _c and len(_c) == 1:
+            _o = next(iter(_c))
+    if not _o or _o in _lir_used:
+        continue
+    _lir_used.add(_o)
+    _sd = r.get("stage_dates") or {}
+    # a deal moved straight past "DPA Signed" in HubSpot has no entry date for it
+    _signed = _sd.get("dpa_signed") or _sd.get("live") or r.get("created")
+    _src = lir_by_ods.get(_o, {})
+    lir_practices.append({
+        "deal_id": r.get("deal_id"), "name": r["name"], "ods": _o, "stage": r["stage"],
+        "paid": bool(r.get("paid")), "patients": r.get("patients"),
+        "signed": _signed, "signed_approx": not _sd.get("dpa_signed"), "days": _src.get("days", {}), "users": _src.get("users", {}),
+    })
+# Practices recalling in Omni with no DPA-signed/live Planner deal (customers from
+# before the HubSpot pipeline, e.g. Cape Hill): cohort = month of first recall. One
+# test recall isn't usage, so they need a real week (>= 5 recalls) to be listed.
+for _o, _p in lir_by_ods.items():
+    if _o in _lir_used or sum(_p["days"].values()) < MIN_ACTIVE_RECALLS:
+        continue
+    lir_practices.append({
+        "deal_id": None, "name": _p["name"], "ods": _o, "stage": "no_deal", "paid": False,
+        "patients": (_geo_by_ods.get(_o) or {}).get("patients"),
+        "signed": next(iter(_p["days"])), "signed_approx": True,
+        "days": _p["days"], "users": _p["users"],
+    })
+lir = {"source": lir_source, "error": lir_error, "from": lir_from, "to": lir_to, "practices": lir_practices}
+
 # --- data warnings (source divergence etc.) surfaced on the board itself ---
 data_warnings = []
+if lir_error:
+    data_warnings.append(f"Retention tab has no data: the Omni recalls sheet couldn't be read ({lir_error})")
 if promoted_live:
     data_warnings.append(f"{len(promoted_live)} HubSpot deal(s) lag the Live sheet: " + "; ".join(promoted_live))
 if dropped_dups:
@@ -1179,6 +1320,7 @@ out = {
     "this_week": this_week,
     "data_warnings": data_warnings,
     "kpi_history": kpi_history,
+    "lir": lir,
 }
 dest = ROOT / "apps/primary-care-tech-overview/public/data/funnel_board.json"
 dest.write_text(json.dumps(out, indent=2))

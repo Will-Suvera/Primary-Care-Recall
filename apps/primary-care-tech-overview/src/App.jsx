@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import FunnelBoard from "./components/FunnelBoard.jsx";
 import OnboardingHub from "./components/OnboardingHub.jsx";
+import LirCohort from "./components/LirCohort.jsx";
 import { useGoogleAuth } from "./auth.js";
 import { firstNameFromEmail, ONB_BASE } from "./onboarding.js";
 
@@ -21,14 +22,19 @@ function SignInGate({ auth }) {
   );
 }
 
-const tabFromUrl = () =>
-  new URLSearchParams(window.location.search).get("tab") === "onboarding" ? "onboarding" : "overview";
+const TABS = ["overview", "onboarding", "retention"];
+const tabFromUrl = () => {
+  const t = new URLSearchParams(window.location.search).get("tab");
+  return TABS.includes(t) ? t : "overview";
+};
 
-// Single-page Recalls Overview with two tabs (?tab=overview|onboarding):
+// Single-page Recalls Overview with three tabs (?tab=overview|onboarding|retention):
 //  • Overview — the read-only funnel analytics ("where everyone's at"); the
 //    interactive onboarding checklist also lives in its DPA-Signed slide-over.
 //  • Onboarding Hub — the action surface for DPA-signed-onwards practices; step
 //    toggles write to Neon and flow back into the Overview's "X/9" roll-up.
+//  • Retention — the leading indicator of retention: signed-practice cohorts and
+//    the churn-signal watchlist (LirCohort.jsx).
 export default function App() {
   const auth = useGoogleAuth();
   const [data, setData] = useState(null);
@@ -116,6 +122,9 @@ export default function App() {
           <button className={"su-nav-item" + (tab === "onboarding" ? " active" : "")} onClick={() => selectTab("onboarding")}>
             Onboarding Hub{data && <span className="su-navcount">{cohortCount}</span>}
           </button>
+          <button className={"su-nav-item" + (tab === "retention" ? " active" : "")} onClick={() => selectTab("retention")}>
+            Retention
+          </button>
         </nav>
 
         {tab === "overview" ? (
@@ -130,9 +139,11 @@ export default function App() {
             </div>
             <div className="su-spacer" />
           </>
-        ) : (
+        ) : tab === "onboarding" ? (
           /* the Onboarding Hub portals its "on this page" nav here, so there's one column */
           <div id="su-hubslot" className="su-hubnav" />
+        ) : (
+          <div className="su-spacer" />
         )}
         {auth.user && (
           <div className="su-user">
@@ -147,6 +158,8 @@ export default function App() {
           <div className="loading">Loading…</div>
         ) : tab === "onboarding" ? (
           <OnboardingHub data={data} visits={visits} auth={auth.user} />
+        ) : tab === "retention" ? (
+          <LirCohort lir={data.lir} generatedAt={data.generated_at} />
         ) : (
           <FunnelBoard data={data} auth={auth.user} visits={visits} />
         )}

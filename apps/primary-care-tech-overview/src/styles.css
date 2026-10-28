@@ -710,3 +710,24 @@ tr.row-shaded td { border-bottom-color: var(--su-line); }
 .st-mix-seg.live { background: var(--su-series-3); }
 .st-mix-legend { font-size: 10.5px; color: var(--su-faint); margin-top: 3px; }
 .st-foot { margin-top: 18px; line-height: 1.5; }
+
+/* ---------- Leading indicator of retention (LirCohort.jsx) ---------- */
+/* single-hue sequential heat in the brand purple; ink text until the fill is dark enough for white */
+.lir-scroll { overflow-x: auto; }
+.lir-table th.num, .lir-table td.lir-cell { min-width: 44px; }
+.lir-table td.lir-cell { text-align: center; border-left: 2px solid var(--su-card); font-size: 12px; cursor: default; }
+.lir-cell.h0 { background: var(--su-surface); color: var(--su-muted); }
+.lir-cell.h1 { background: rgba(72, 33, 144, .12); color: var(--su-ink); }
+.lir-cell.h2 { background: rgba(72, 33, 144, .28); color: var(--su-ink); }
+.lir-cell.h3 { background: rgba(72, 33, 144, .50); color: var(--su-ink); }
+.lir-cell.h4 { background: rgba(72, 33, 144, .82); color: var(--su-brand-ink); }
+.lir-cell.nodata { color: var(--su-faint); }
+.lir-watch-h { margin-top: 26px; }
+.lir-paid { font-size: 10px; padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+.lir-strip { display: flex; gap: 2px; }
+/* one cell per week: solid = used (5+ recalls), tint = a few, empty = none, hatched = before the data */
+.lir-wk { width: 12px; height: 16px; border-radius: 3px; background: var(--su-surface); cursor: default; }
+.lir-wk.some { background: rgba(72, 33, 144, .28); }
+.lir-wk.hit { background: rgba(72, 33, 144, .82); }
+.lir-wk.nodata { background: repeating-linear-gradient(45deg, var(--su-surface) 0 2px, transparent 2px 4px); }
+.lir-watch-h .ov-more { border: 0; background: none; padding: 0; font-family: inherit; }
