@@ -38,6 +38,14 @@ export default function LirCohort({ lir, generatedAt }) {
     );
   }
   const watch = showAll ? r.watch : r.watch.filter((p) => p.status !== "on_track");
+  // one-line takeaway: the typical and best share of a signing month that became regular users
+  const filled = r.cohorts.flatMap((c) => c.cells.filter((x) => !x.noData && c.n));
+  const pcts = filled.map((x) => x.pct).sort((a, b) => a - b);
+  const typical = pcts.length ? pcts[Math.floor(pcts.length / 2)] : null;
+  const best = pcts.length ? pcts[pcts.length - 1] : null;
+  // worked example: the biggest signing group, at its latest month
+  const ex = r.cohorts.filter((c) => c.cells.some((x) => !x.noData)).sort((a, b) => b.n - a.n)[0];
+  const exCell = ex?.cells.filter((x) => !x.noData).pop();
   const cols = Array.from({ length: r.maxK }, (_, i) => i + 1);
 
   return (
@@ -83,13 +91,29 @@ export default function LirCohort({ lir, generatedAt }) {
         </div>
       </div>
 
-      <div className="st-h">Cohorts <span className="st-hint">% of each cohort on track at the end of each month after signing · hover a cell for the practices</span></div>
+      <div className="st-h">Do practices become regular users after signing?</div>
+      {typical != null && (
+        <p className="lir-takeaway">
+          <b>In a typical month, {typical}% of a signing group are regular users</b> (best so far: {best}%).
+          Good looks like the numbers rising left to right, and newer rows beating older ones.
+        </p>
+      )}
+      {exCell && (
+        <p className="st-note lir-howto">
+          How to read it: each row is the practices that signed in that month. E.g. <b>{ex.n} practices signed in {fmtMonth(ex.month)}</b> —{" "}
+          {exCell.k} month{exCell.k > 1 ? "s" : ""} later, {exCell.hit} of them ({exCell.pct}%) were using Planner regularly.
+          Hover any cell to see which practices.
+        </p>
+      )}
       <div className="lir-scroll">
         <table className="st-table lir-table">
           <thead>
             <tr>
-              <th>DPA signed</th><th className="num">Practices</th>
-              {cols.map((k) => <th key={k} className="num">{k}</th>)}
+              <th rowSpan={2}>Signed in</th><th rowSpan={2} className="num">Practices<br />signed</th>
+              {cols.length > 0 && <th colSpan={cols.length} className="lir-group">% using Planner regularly, months after signing →</th>}
+            </tr>
+            <tr>
+              {cols.map((k) => <th key={k} className="num">{k === 1 ? "1 month" : `${k} months`}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -97,10 +121,11 @@ export default function LirCohort({ lir, generatedAt }) {
               <tr key={c.month}>
                 <td><b>{fmtMonth(c.month)}</b></td>
                 <td className="num su-num">{c.n}</td>
-                {cols.map((k) => {
+                {c.cells.length === 0 && <td colSpan={cols.length} className="st-faint lir-toonew">signed too recently to judge</td>}
+                {c.cells.length > 0 && cols.map((k) => {
                   const cell = c.cells[k - 1];
                   if (!cell) return <td key={k} />;
-                  if (cell.noData) return <td key={k} className="lir-cell nodata" title={`${fmtMonth(cell.month)}: before the Omni data starts`}>·</td>;
+                  if (cell.noData) return <td key={k} className="lir-cell nodata" title={`${fmtMonth(cell.month)}: before the Omni data starts`} />;
                   return (
                     <td key={k} className={`lir-cell h${heat(cell.pct)}`} title={cellTitle(cell, c, need)}>
                       <span className="su-num">{cell.pct}%</span>
@@ -113,9 +138,9 @@ export default function LirCohort({ lir, generatedAt }) {
         </table>
       </div>
       <p className="st-note">
-        Read down a column: newer cohorts getting on track sooner and staying there means onboarding is working.
-        The current month is left out until it's complete. “·” = before the Omni data starts ({fmtDay(lir.from)}).
-        Practices recalling with no Planner deal in HubSpot are grouped by their first recall month.
+        “Regularly” = recalls in at least {need} of the last {WINDOW} weeks, checked at the end of each month. The current
+        month is left out until it's complete. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
+        recalling with no Planner deal in HubSpot are grouped by the month of their first recall.
       </p>
 
       <div className="st-h lir-watch-h">
