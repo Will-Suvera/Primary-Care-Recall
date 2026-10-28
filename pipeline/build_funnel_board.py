@@ -223,19 +223,22 @@ try:
                    {"inputs": [{"id": x} for x in deal_ids[i:i+100]]})
         for r in assoc.get("results", []):
             tos = r.get("to", [])
-            if tos: deal2company[str(r["from"]["id"])] = str(tos[0]["toObjectId"])
-    comp_ids = list(set(deal2company.values()))
-    comp2ods = {}
+            if tos: deal2company[str(r["from"]["id"])] = [str(t["toObjectId"]) for t in tos]
+    comp_ids = list({c for cs in deal2company.values() for c in cs})
+    comp2ods, pcn_comps = {}, set()
     for i in range(0, len(comp_ids), 100):
         cr = hs("POST", "/crm/v3/objects/companies/batch/read",
-                {"properties": ["ods_unique", "practice_code"],
+                {"properties": ["ods_unique", "practice_code", "organisation_type"],
                  "inputs": [{"id": x} for x in comp_ids[i:i+100]]})
         for r in cr.get("results", []):
             pr = r.get("properties", {})
             ods = (pr.get("ods_unique") or pr.get("practice_code") or "").strip().upper()
             if ods: comp2ods[str(r["id"])] = ods
-    for did, cid in deal2company.items():
-        if cid in comp2ods: deal_id2ods[did] = comp2ods[cid]
+            if (pr.get("organisation_type") or "").strip().upper() == "PCN": pcn_comps.add(str(r["id"]))
+    # a deal often hangs off both the practice and its PCN — the practice's code wins
+    for did, cids in deal2company.items():
+        coded = sorted((c for c in cids if c in comp2ods), key=lambda c: c in pcn_comps)
+        if coded: deal_id2ods[did] = comp2ods[coded[0]]
     print(f"  deal->company->ODS resolved for {len(deal_id2ods)}/{len(deal_ids)} deals")
 except Exception as e:
     print(f"  WARN: deal->company->ODS join failed ({e}); using dealname match only")
@@ -508,17 +511,6 @@ DEAL_ODS_OVERRIDES = {
     # the code St Neots was mistakenly borrowing (freed by the override above).
     # Confirmed by Will 2026-06-30, matches the onboarding sheet.
     "501204035828": "L82050",
-    # Palfrey Health Centre: attribution joined it under Amaanah (Y01068) — the same
-    # slip as Oakleaf above — so it was showing Amaanah's recalls. Palfrey is M91621
-    # (WS1 4JQ), per the NHS directory and Omni's ODS Code. 2026-10-28.
-    "443006692581": "M91621",
-    # Chapelford Primary Care Centre: HubSpot company carries U45014, which isn't a
-    # GP practice code (so no list size, no recalls). It's Y04925 (WA5 3AL), per the
-    # NHS directory and Omni's ODS Code. 2026-10-28.
-    "504997875945": "Y04925",
-    # Brook Medical Centre (Whitfield PCN): HubSpot company carries U36512, not a GP
-    # practice code. It's M83094 (ST6 7NN), per the NHS directory and its contract. 2026-10-28.
-    "520403935443": "M83094",
 }
 
 # Last-ditch ODS fallback for deals with no company code and no attribution
