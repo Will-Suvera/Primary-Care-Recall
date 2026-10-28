@@ -43,6 +43,11 @@ describe("lir (weekly usage)", () => {
     expect(practiceSignal(P(), { ...ctx, firstWeek: "2026-10-12" }).status).toBe("unknown");
   });
 
+  it("totals recalls up to the last full week", () => {
+    const s = practiceSignal(P({ days: { "2026-06-10": 100, "2026-10-21": 7, "2026-10-27": 50 } }), ctx);
+    expect([s.totalRecalls, s.recentRecalls]).toEqual([107, 7]); // 27 Oct is in the unfinished week
+  });
+
   it("counts staff who recalled in the last 4 weeks", () => {
     const s = practiceSignal(P({ users: { "a@nhs.net": ["2026-10-20"], "b@nhs.net": ["2026-08-01"] } }), ctx);
     expect(s.activeUsers).toEqual(["a@nhs.net"]);

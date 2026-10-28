@@ -87,6 +87,9 @@ export function practiceSignal(p, { need, lastWeek, firstWeek }) {
   for (let i = 0; i < WINDOW; i++) for (const e of users.get(addDays(lastWeek, -7 * i)) || []) recent.add(e);
   const days = Object.keys(p.days || {}).filter((d) => d <= addDays(lastWeek, 6));
   const lastRecall = days.length ? days[days.length - 1] : null;
+  // totals stop at the last full week, like everything else on the tab
+  const totalRecalls = days.reduce((n, d) => n + p.days[d], 0);
+  const recentRecalls = strip.slice(-WINDOW).reduce((n, w) => n + w.count, 0);
 
   let status;
   if (tenureWeeks < 1) status = "ramping";
@@ -99,7 +102,7 @@ export function practiceSignal(p, { need, lastWeek, firstWeek }) {
 
   return {
     ...p, cohort: p.signed.slice(0, 7), tenureWeeks, used, status, strip, weeks,
-    activeUsers: [...recent].sort(), lastRecall,
+    activeUsers: [...recent].sort(), lastRecall, totalRecalls, recentRecalls,
   };
 }
 
@@ -142,5 +145,7 @@ export function buildLir(lir, { need = DEFAULT_WEEKS, today }) {
     judged: judged.length,
     churnSignals: practices.filter((p) => p.status === "stopped" || p.status === "dropped").length,
     notReached: practices.filter((p) => p.status === "not_reached").length,
+    totalRecalls: practices.reduce((n, p) => n + p.totalRecalls, 0),
+    recentRecalls: practices.reduce((n, p) => n + p.recentRecalls, 0),
   };
 }

@@ -89,6 +89,11 @@ export default function LirCohort({ lir, generatedAt }) {
           <div className="kpi-value su-num">{r.notReached}</div>
           <div className="kpi-sub">2+ months since signing, never on track</div>
         </div>
+        <div className="kpi">
+          <div className="kpi-label">Recalls, last {WINDOW} weeks</div>
+          <div className="kpi-value su-num">{r.recentRecalls.toLocaleString("en-GB")}</div>
+          <div className="kpi-sub">{r.totalRecalls.toLocaleString("en-GB")} since {fmtDay(lir.from)}</div>
+        </div>
       </div>
 
       <div className="st-h">Do practices become regular users after signing?</div>
@@ -150,7 +155,7 @@ export default function LirCohort({ lir, generatedAt }) {
       <table className="st-table">
         <thead>
           <tr>
-            <th>Practice</th><th>Signal</th><th className="num">Signed</th><th className="num">Last recall</th>
+            <th>Practice</th><th>Signal</th><th className="num">Signed</th><th className="num">Last recall</th><th className="num">Recalls<br />last {WINDOW} wks</th><th className="num">Recalls<br />since {fmtDay(lir.from)}</th>
             <th className="num">Users</th><th>Last 12 weeks</th>
           </tr>
         </thead>
@@ -172,6 +177,8 @@ export default function LirCohort({ lir, generatedAt }) {
               <td className={"num" + (p.lastRecall && daysAgo(p.lastRecall, today) > 14 ? " bad" : "")}>
                 {p.lastRecall ? `${daysAgo(p.lastRecall, today)}d ago` : "never"}
               </td>
+              <td className="num su-num">{p.recentRecalls.toLocaleString("en-GB")}</td>
+              <td className="num su-num">{p.totalRecalls.toLocaleString("en-GB")}</td>
               <td className="num su-num" title={p.activeUsers.join("\n") || "nobody in the last 4 weeks"}>
                 {p.activeUsers.length}{p.activeUsers.length === 1 && <span className="st-faint" title="One person doing all the recalls — at risk if they leave or go on leave"> !</span>}
               </td>
