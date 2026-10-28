@@ -54,9 +54,17 @@ export default function LirCohort({ lir, generatedAt }) {
         <div>
           <h2 className="ov-card-title">Leading indicator of retention</h2>
           <p className="ov-sub">
-            <b>Using Planner in at least {need} of every {WINDOW} weeks</b> (a week counts with {MIN_WEEK_RECALLS}+ recalls),
-            by the month the DPA was signed. Regular use now predicts renewal later, so a practice that stops coming back
-            is an early churn signal.
+            <b>What is this?</b> A leading indicator of retention (LIR) is an early habit that predicts whether a customer
+            will renew (from Mark Roberge, <i>The Science of Scaling</i>). Renewals are a year away; usage we can see today.
+            Ours is <b>using Planner in at least {need} of every {WINDOW} weeks</b> (a week counts with {MIN_WEEK_RECALLS}+
+            recalls). Practices with that habit are the ones likely to renew; practices that lose it are early churn
+            warnings we can still act on.
+          </p>
+          <p className="ov-sub">
+            <b>How it should look over time:</b> the on-track % going up, churn signals and “never got going” going down,
+            and in the table below, numbers rising left to right and newer signing months beating older ones. Once the
+            first contracts reach renewal (from mid-2027), we check that on-track practices really did renew more, and
+            adjust the definition if not.
           </p>
         </div>
         <div className="lir-controls">
