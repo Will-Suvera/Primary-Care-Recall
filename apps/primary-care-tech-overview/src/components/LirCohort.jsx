@@ -10,6 +10,8 @@ const fmtMonth = (ym) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-G
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const daysAgo = (d, today) => Math.round((new Date(`${today}T00:00:00Z`) - new Date(`${d}T00:00:00Z`)) / 86400000);
 // single-hue sequential (brand purple); ink text until the fill is dark enough for white
+// Paid = "PAID -" / "PAID (Trial First) -" on the HubSpot deal; freemium = everyone else
+const PLANS = [["all", "All"], ["paid", "Paid"], ["freemium", "Freemium"]];
 const heat = (p) => (p >= 75 ? 4 : p >= 50 ? 3 : p >= 25 ? 2 : p > 0 ? 1 : 0);
 
 function cellTitle(c, cohort, need) {
@@ -20,9 +22,13 @@ function cellTitle(c, cohort, need) {
 
 export default function LirCohort({ lir, generatedAt }) {
   const [need, setNeed] = useState(DEFAULT_WEEKS);
+  const [plan, setPlan] = useState("all");
   const [showAll, setShowAll] = useState(false);
   const today = (generatedAt || new Date().toISOString()).slice(0, 10);
-  const r = useMemo(() => buildLir(lir, { need, today }), [lir, need, today]);
+  const r = useMemo(() => {
+    const keep = (p) => plan === "all" || (plan === "paid") === Boolean(p.paid);
+    return buildLir(lir && { ...lir, practices: (lir.practices || []).filter(keep) }, { need, today });
+  }, [lir, need, today, plan]);
 
   if (!lir || r.empty) {
     return (
@@ -45,10 +51,17 @@ export default function LirCohort({ lir, generatedAt }) {
             is an early churn signal.
           </p>
         </div>
-        <div className="st-seg" role="group" aria-label="Weeks needed">
-          {WEEKS_NEEDED.map((k) => (
-            <button key={k} className={"st-seg-btn" + (need === k ? " on" : "")} onClick={() => setNeed(k)}>{k} of {WINDOW} weeks</button>
-          ))}
+        <div className="lir-controls">
+          <div className="st-seg" role="group" aria-label="Paid or freemium">
+            {PLANS.map(([k, label]) => (
+              <button key={k} className={"st-seg-btn" + (plan === k ? " on" : "")} onClick={() => setPlan(k)}>{label}</button>
+            ))}
+          </div>
+          <div className="st-seg" role="group" aria-label="Weeks needed">
+            {WEEKS_NEEDED.map((k) => (
+              <button key={k} className={"st-seg-btn" + (need === k ? " on" : "")} onClick={() => setNeed(k)}>{k} of {WINDOW} weeks</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -56,7 +69,7 @@ export default function LirCohort({ lir, generatedAt }) {
         <div className="kpi">
           <div className="kpi-label">On track, week of {fmtDay(r.lastWeek)}</div>
           <div className="kpi-value su-num">{r.judged ? Math.round((100 * r.onTrack) / r.judged) : 0}%</div>
-          <div className="kpi-sub">{r.onTrack} of {r.judged} practices</div>
+          <div className="kpi-sub">{r.onTrack} of {r.judged} {plan === "all" ? "" : `${plan} `}practices</div>
         </div>
         <div className={"kpi" + (r.churnSignals ? " bad" : "")}>
           <div className="kpi-label">Churn signals</div>

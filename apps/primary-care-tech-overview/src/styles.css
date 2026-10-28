@@ -714,6 +714,7 @@ tr.row-shaded td { border-bottom-color: var(--su-line); }
 /* ---------- Leading indicator of retention (LirCohort.jsx) ---------- */
 /* single-hue sequential heat in the brand purple; ink text until the fill is dark enough for white */
 .lir-scroll { overflow-x: auto; }
+.lir-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .lir-table th.num, .lir-table td.lir-cell { min-width: 44px; }
 .lir-table td.lir-cell { text-align: center; border-left: 2px solid var(--su-card); font-size: 12px; cursor: default; }
 .lir-cell.h0 { background: var(--su-surface); color: var(--su-muted); }
