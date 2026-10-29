@@ -1245,9 +1245,10 @@ for r in sorted(rows, key=lambda r: (not r.get("paid"), r["stage"] != "live")):
         "paid": bool(r.get("paid")), "patients": r.get("patients"),
         "signed": _signed, "signed_approx": not _sd.get("dpa_signed"), "days": _src.get("days", {}), "users": _src.get("users", {}),
     })
-# A PCN deal (e.g. iGPC, U02731) never recalls itself: its member practices do. Fold
-# the recalls of members that have no deal of their own into the PCN's row, and list
-# who's recalling, so they aren't shown again as separate "no deal" practices.
+# A PCN deal (e.g. iGPC, U02731) never recalls itself: its member practices do. The
+# contract is the PCN's, but usage is per practice — so each member that recalls (and
+# has no deal of its own) gets its own row, tagged with the PCN so the dashboard can
+# group them. A PCN with no practice recalling yet keeps a single placeholder row.
 try:
     from ods_pcn import fetch_pcn_membership
     _pcn_members = {}
@@ -1256,24 +1257,23 @@ try:
 except Exception as _e:  # noqa: BLE001 — ePCN outage: PCN rows just show no recalls
     _pcn_members = {}
     print(f"  WARN: PCN membership unavailable ({_e}); PCN deals won't pick up practice recalls")
+_expanded = []
 for _p in lir_practices:
-    _ms = [m for m in _pcn_members.get(_p["ods"], []) if m in lir_by_ods and m not in _lir_used]
     if _p["ods"] not in _pcn_members:
+        _expanded.append(_p)
         continue
-    _p["pcn"] = True
-    _days, _users, _members = dict(_p["days"]), {k: list(v) for k, v in _p["users"].items()}, []
+    _pcn = {"ods": _p["ods"], "name": _p["name"], "size": len(_pcn_members[_p["ods"]])}
+    _ms = [m for m in _pcn_members[_p["ods"]] if m in lir_by_ods and m not in _lir_used]
+    if not _ms:
+        _expanded.append({**_p, "pcn": _pcn, "pcn_placeholder": True})
+        continue
     for _m in _ms:
-        _src = lir_by_ods[_m]
         _lir_used.add(_m)
-        for _d, _n in _src["days"].items():
-            _days[_d] = _days.get(_d, 0) + _n
-        for _e2, _ds in _src["users"].items():
-            _users[_e2] = sorted(set(_users.get(_e2, [])) | set(_ds))
-        _members.append({"ods": _m, "name": _src["name"], "recalls": sum(_src["days"].values())})
-    _p["days"] = dict(sorted(_days.items()))
-    _p["users"] = _users
-    _p["members"] = sorted(_members, key=lambda m: -m["recalls"])
-    _p["member_count"] = len(_pcn_members[_p["ods"]])
+        _src = lir_by_ods[_m]
+        _expanded.append({**_p, "name": _src["name"], "ods": _m, "pcn": _pcn,
+                          "patients": (_geo_by_ods.get(_m) or {}).get("patients"),
+                          "days": _src["days"], "users": _src["users"]})
+lir_practices = _expanded
 # Practices recalling in Omni with no DPA-signed/live Planner deal (customers from
 # before the HubSpot pipeline, e.g. Cape Hill): cohort = month of first recall. One
 # test recall isn't usage, so they need a real week (>= 5 recalls) to be listed.
@@ -1334,8 +1334,9 @@ for _c in sorted(_contracts, key=lambda c: c["start"]):  # a later contract (ren
         for _n in _c["names"] + [_c["name"]]:
             _contract_by_name[_lir_key(_n)] = _term
 for _p in lir_practices:
-    _p["contract"] = _contract_by_ods.get(_p["ods"]) or _contract_by_name.get(
-        _lir_key(PAID_PREFIX_RE.sub("", _p["name"], count=1)))
+    _owner = _p.get("pcn") or _p  # a PCN's practices share the PCN's contract
+    _p["contract"] = _contract_by_ods.get(_owner["ods"]) or _contract_by_name.get(
+        _lir_key(PAID_PREFIX_RE.sub("", _owner["name"], count=1)))
 
 lir = {"source": lir_source, "error": lir_error, "from": lir_from, "to": lir_to, "practices": lir_practices}
 

@@ -57,7 +57,7 @@ function CohortDetail({ sel, need }) {
         <ul>
           {c.members.map((p) => (
             <li key={p.ods}>
-              <span><b>{p.name}</b> <PaidChip p={p} />{p.pcn && p.members?.length ? <span className="st-faint"> via {p.members.map((m) => m.name).join(", ")}</span> : null}</span>
+              <span><b>{p.name}</b> <PaidChip p={p} />{p.pcn && !p.pcn_placeholder ? <span className="st-faint"> · {p.pcn.name}</span> : null}</span>
               <span className="st-faint">
                 {p.stage === "no_deal" ? `first recall ${fmtDay(p.signed.slice(0, 10))}` : `DPA signed ${fmtDay(p.signed.slice(0, 10))}${p.signed_approx ? " (approx.)" : ""}`}
                 {p.contract ? ` · paid contract from ${fmtDay(p.contract.start)}` : ""}
@@ -107,8 +107,28 @@ export default function LirCohort({ lir, generatedAt }) {
     );
   }
   const watch = showAll ? r.watch : r.watch.filter((p) => p.status !== "on_track");
+  // A PCN contract's practices sit together under a PCN header, placed where its
+  // worst practice ranks; once a group shows, all its practices show.
+  const watchRows = [];
+  const seenPcn = new Set();
+  for (const p of watch) {
+    if (!p.pcn || p.pcn_placeholder) { watchRows.push({ p }); continue; }
+    if (seenPcn.has(p.pcn.ods)) continue;
+    seenPcn.add(p.pcn.ods);
+    const members = r.watch.filter((q) => q.pcn?.ods === p.pcn.ods && !q.pcn_placeholder);
+    watchRows.push({ head: { ...p.pcn, paid: p.paid, n: members.length } });
+    for (const q of members) watchRows.push({ p: q });
+  }
   const yearOut = new Date(`${today}T00:00:00Z`); yearOut.setUTCFullYear(yearOut.getUTCFullYear() + 1);
-  const renewSoon = r.watch.filter((p) => p.contract && p.contract.renews <= yearOut.toISOString().slice(0, 10));
+  // one per contract: a PCN's practices share theirs, on track if any of them is
+  const renewByOwner = new Map();
+  for (const p of r.watch) {
+    if (!p.contract || p.contract.renews > yearOut.toISOString().slice(0, 10)) continue;
+    const k = p.pcn?.ods || p.ods;
+    const prev = renewByOwner.get(k);
+    if (!prev || (p.status === "on_track" && prev.status !== "on_track")) renewByOwner.set(k, p);
+  }
+  const renewSoon = [...renewByOwner.values()];
   // one-line takeaway: the typical and best share of a signing month that became regular users
   const filled = r.cohorts.flatMap((c) => c.cells.filter((x) => !x.noData && c.n));
   const pcts = filled.map((x) => x.pct).sort((a, b) => a - b);
@@ -249,26 +269,22 @@ export default function LirCohort({ lir, generatedAt }) {
           </tr>
         </thead>
         <tbody>
-          {watch.map((p) => (
-            <tr key={p.ods}>
+          {watchRows.map(({ p, head }) => head ? (
+            <tr key={`pcn-${head.ods}`} className="lir-pcn-head">
+              <td colSpan={9}>
+                <span className="lir-pcn-tag">PCN</span> <b>{head.name}</b>{" "}
+                {head.paid && <span className="su-status good lir-paid">PAID</span>}{" "}
+                <span className="st-faint">
+                  PCN contract · {head.n} of {head.size} practices recalling{head.n ? " (below)" : ""}
+                </span>
+              </td>
+            </tr>
+          ) : (
+            <tr key={p.ods} className={p.pcn && !p.pcn_placeholder ? "lir-pcn-member" : ""}>
               <td>
-                <b>{p.name}</b> {p.paid && <span className="su-status good lir-paid">PAID</span>}
+                <b>{p.name}</b> {p.paid && !p.pcn && <span className="su-status good lir-paid">PAID</span>}
                 <div className="st-faint">{p.ods}{p.patients ? ` · ${p.patients.toLocaleString("en-GB")} patients` : ""}{p.stage === "no_deal" ? " · no Suvera Recall deal" : ""}</div>
-                {p.pcn && (
-                  // a PCN never recalls itself: its row is the sum of its practices
-                  <div className="lir-pcn lir-hov" {...tipOn(
-                    <>
-                      <b>{p.name}: recalls come from its practices</b>
-                      {p.members?.length ? (
-                        <ul>{p.members.map((m) => <li key={m.ods}>{m.name} ({m.ods}): {m.recalls.toLocaleString("en-GB")} recalls</li>)}</ul>
-                      ) : <div className="st-faint">No practice has recalled yet</div>}
-                      <div className="st-faint">{p.members?.length || 0} of {p.member_count} practices in the PCN recalling</div>
-                    </>
-                  )}>
-                    <span className="lir-pcn-tag">PCN</span>{" "}
-                    {p.members?.length ? <>via {p.members.map((m) => m.name).join(", ")}</> : "no practice recalling yet"}
-                  </div>
-                )}
+                {p.pcn_placeholder && <div className="lir-pcn"><span className="lir-pcn-tag">PCN</span> contract · no practice recalling yet</div>}
               </td>
               <td className="lir-hov" {...tipOn(
                 <>
