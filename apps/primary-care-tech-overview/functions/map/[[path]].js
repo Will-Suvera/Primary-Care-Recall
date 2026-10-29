@@ -1,8 +1,9 @@
 // ops.suvera.com/map/* -> the growth map, which lives in its own Cloudflare Pages
-// project (growth-map) so it can redeploy straight after each ~5-min data refresh
+// project (suvera-growth-map) so it can redeploy straight after each ~5-min data refresh
 // (refresh-waitlist.yml) instead of waiting on this app's slower deploy. The map
 // is built with base /map/, so its files sit at the root of that project.
-const ORIGIN = "https://growth-map.pages.dev";
+// suvera- prefix: pages.dev names are global, and "growth-map" belongs to someone else
+const ORIGIN = "https://suvera-growth-map.pages.dev";
 
 export async function onRequest({ request }) {
   const url = new URL(request.url);
