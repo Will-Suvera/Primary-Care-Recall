@@ -64,6 +64,15 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  // sidebar collapsed to a slim rail; remembered per browser
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try { return localStorage.getItem("pcto.navCollapsed") === "1"; } catch { return false; }
+  });
+  const toggleNav = () => setNavCollapsed((c) => {
+    try { localStorage.setItem("pcto.navCollapsed", c ? "0" : "1"); } catch { /* storage blocked */ }
+    return !c;
+  });
+
   const selectTab = (t) => {
     setTab(t);
     const u = new URL(window.location.href);
@@ -110,7 +119,11 @@ export default function App() {
 
   return (
     <div className="su-app">
-      <aside className="su-sidebar">
+      <aside className={"su-sidebar" + (navCollapsed ? " collapsed" : "")}>
+        <button className="su-collapse" onClick={toggleNav}
+          aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          {navCollapsed ? "»" : "«"}
+        </button>
         <div className="su-brand"><img src={LOGO} alt="Suvera" /></div>
         {greetName && <div className="su-greeting">Hello, {greetName}</div>}
         {data && <div className="su-brand-meta">updated {new Date(data.generated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</div>}
