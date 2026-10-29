@@ -110,6 +110,28 @@ jobs:
           cache: 'npm'
           cache-dependency-path: apps/tech-growth-map/package-lock.json
 
+      # ops.suvera.com/map: the map gets its own small Cloudflare Pages project
+      # (growth-map), deployed right here after the data commit so it's as fresh as
+      # the old GitHub Pages site. The Recalls Overview proxies /map/* to it
+      # (apps/primary-care-tech-overview/functions/map/[[path]].js) — building it
+      # into that ~5-min deploy instead left the map 10-20 min behind ("stale").
+      - name: Build map for ${{ vars.OPS_HOST }}/map
+        if: ${{ vars.OPS_HOST != '' }}
+        working-directory: apps/tech-growth-map
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: npm ci && npx vite build --base /map/ --outDir dist-ops --emptyOutDir
+
+      - name: Deploy map to Cloudflare Pages (growth-map)
+        if: ${{ vars.OPS_HOST != '' }}
+        working-directory: apps/tech-growth-map
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler@4 pages project create growth-map --production-branch=main 2>/dev/null || true
+          npx wrangler@4 pages deploy dist-ops --project-name=growth-map --branch=main --commit-dirty=true
+
       # Once the map has moved to <OPS_HOST>/map (repo variable set), GitHub Pages
       # serves a redirect instead: index.html for the root, 404.html for deep links.
       - name: Build site

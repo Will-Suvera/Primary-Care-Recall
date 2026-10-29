@@ -34,7 +34,6 @@ on:
     paths:
       - 'apps/primary-care-tech-overview/**'
       - 'pipeline/**'
-      - 'apps/tech-growth-map/**'
       - '.github/workflows/deploy-planner-cf.yml'
   schedule:
     # Every 30 min: regenerate data + redeploy. GitHub delays scheduled runs (the old
@@ -159,16 +158,6 @@ jobs:
         run: |
           npm ci
           npm run build
-
-      # The growth map ships in the same deploy at /map, so both tools sit behind one
-      # domain (and one Cloudflare Access policy). Its data is the committed map data.
-      - name: Build growth map into /map
-        working-directory: apps/tech-growth-map
-        env:
-          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-        run: |
-          npm ci
-          npx vite build --base /map/ --outDir ../primary-care-tech-overview/dist/map --emptyOutDir
 
       # The dashboard data must never be a public static file — strip it from the
       # build output. The app loads it from the authenticated API instead.

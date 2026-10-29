@@ -3,6 +3,4 @@
 # app shell. The /api/onboarding* Pages Function is matched BEFORE this rule, and
 # real static assets (/assets/*, /data/*.json) are served before it too, so this
 # only catches genuine SPA navigations.
-# The growth map is a separate app built into /map (see deploy-planner-cf.yml).
-/map/*    /map/index.html   200
 /*    /index.html   200
