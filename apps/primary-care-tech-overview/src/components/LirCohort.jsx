@@ -15,6 +15,34 @@ const daysAgo = (d, today) => Math.round((new Date(`${today}T00:00:00Z`) - new D
 const PLANS = [["all", "All"], ["paid", "Paid"], ["freemium", "Freemium"]];
 const heat = (p) => (p >= 75 ? 4 : p >= 50 ? 3 : p >= 25 ? 2 : p > 0 ? 1 : 0);
 
+// what each watchlist signal means, for the hover card
+const STATUS_WHY = {
+  on_track: (n) => `Meets the bar of ${n} used weeks out of ${WINDOW}.`,
+  stopped: () => `No used weeks in the last ${WINDOW}, after being active earlier.`,
+  dropped: () => "Was on track in the last 2 months, now below the bar.",
+  not_reached: () => "Signed 2+ months ago and has never hit the bar.",
+  ramping: () => "Signed under 2 months ago, so too early to judge.",
+  unknown: () => "Not enough Omni data yet to judge.",
+};
+
+// Instant hover card (native title tooltips are slow and tiny); tap toggles it on touch.
+function useTip() {
+  const [tip, setTip] = useState(null);
+  const on = (content) => ({
+    onMouseEnter: (e) => setTip({ content, x: e.clientX, y: e.clientY }),
+    onMouseMove: (e) => setTip((t) => t && { ...t, x: e.clientX, y: e.clientY }),
+    onMouseLeave: () => setTip(null),
+    onClick: (e) => setTip((t) => (t?.content === content ? null : { content, x: e.clientX, y: e.clientY })),
+  });
+  const flip = tip && typeof window !== "undefined" && tip.x > window.innerWidth - 300;
+  const el = tip && (
+    <div className="lir-tip" role="tooltip" style={{ top: tip.y + 16, ...(flip ? { right: window.innerWidth - tip.x + 8 } : { left: tip.x + 12 }) }}>
+      {tip.content}
+    </div>
+  );
+  return [on, el];
+}
+
 const PaidChip = ({ p }) => (p.paid ? <span className="su-status good lir-paid">PAID</span> : <span className="lir-free">freemium</span>);
 
 // The panel under the cohort table: who is in the hovered/tapped signing month, and
@@ -64,6 +92,7 @@ export default function LirCohort({ lir, generatedAt }) {
   const [plan, setPlan] = useState("all");
   const [sel, setSel] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  const [tipOn, tipEl] = useTip();
   const today = (generatedAt || new Date().toISOString()).slice(0, 10);
   const r = useMemo(() => {
     const keep = (p) => plan === "all" || (plan === "paid") === Boolean(p.paid);
@@ -226,7 +255,13 @@ export default function LirCohort({ lir, generatedAt }) {
                 <b>{p.name}</b> {p.paid && <span className="su-status good lir-paid">PAID</span>}
                 <div className="st-faint">{p.ods}{p.patients ? ` · ${p.patients.toLocaleString("en-GB")} patients` : ""}{p.stage === "no_deal" ? " · no Suvera Recall deal" : ""}</div>
               </td>
-              <td>
+              <td className="lir-hov" {...tipOn(
+                <>
+                  <b>{STATUS[p.status].label}</b>
+                  <div>{STATUS_WHY[p.status](need)}</div>
+                  {p.used != null && <div className="st-faint">Used {p.used} of the last {WINDOW} weeks (a week counts with {MIN_WEEK_RECALLS}+ recalls)</div>}
+                </>
+              )}>
                 <span className={"su-status " + STATUS[p.status].tone}>{STATUS[p.status].label}</span>
                 {p.used != null && <div className="st-faint">{p.used} of last {WINDOW} weeks</div>}
               </td>
@@ -239,11 +274,24 @@ export default function LirCohort({ lir, generatedAt }) {
               </td>
               <td className="num su-num">{p.recentRecalls.toLocaleString("en-GB")}</td>
               <td className="num su-num">{p.totalRecalls.toLocaleString("en-GB")}</td>
-              <td className="num su-num" title={p.activeUsers.join("\n") || "nobody in the last 4 weeks"}>
-                {p.activeUsers.length}{p.activeUsers.length === 1 && <span className="st-faint" title="One person doing all the recalls — at risk if they leave or go on leave"> !</span>}
+              <td className="num su-num lir-hov" {...tipOn(
+                <>
+                  <b>Recalled in the last {WINDOW} weeks</b>
+                  {p.activeUsers.length ? <ul>{p.activeUsers.map((u) => <li key={u}>{u}</li>)}</ul> : <div className="st-faint">Nobody</div>}
+                  {p.activeUsers.length === 1 && <div className="lir-tip-warn">One person doing all the recalls: at risk if they leave or go on leave.</div>}
+                </>
+              )}>
+                {p.activeUsers.length}{p.activeUsers.length === 1 && <span className="st-faint"> !</span>}
               </td>
-              <td className={"num" + (p.contract && monthsTo(p.contract.renews, today) <= 6 && p.status !== "on_track" ? " bad" : "")}
-                title={p.contract ? `${p.contract.contract}: ${p.contract.months}-month term from ${fmtDay(p.contract.start)}` : "no contract on the finance tracker"}>
+              <td className={"num lir-hov" + (p.contract && monthsTo(p.contract.renews, today) <= 6 && p.status !== "on_track" ? " bad" : "")}
+                {...tipOn(p.contract ? (
+                  <>
+                    <b>{p.contract.contract}</b>
+                    <div>{p.contract.months}-month term from {fmtDay(p.contract.start)}</div>
+                    <div>Renews {fmtDay(p.contract.renews)} (in {monthsTo(p.contract.renews, today)} months)</div>
+                    <div className="st-faint">{p.status === "on_track" ? "On track, so likely to renew." : "Not on track: renewal at risk."}</div>
+                  </>
+                ) : <div className="st-faint">No contract on the finance tracker</div>)}>
                 {p.contract ? <>{fmtMonth(p.contract.renews.slice(0, 7))}<div className="st-faint">in {monthsTo(p.contract.renews, today)} mo</div></> : "–"}
               </td>
               <td>
@@ -251,8 +299,22 @@ export default function LirCohort({ lir, generatedAt }) {
                   {p.strip.map((w) => (
                     <span key={w.week}
                       className={"lir-wk" + (w.noData ? " nodata" : w.count >= MIN_WEEK_RECALLS ? " hit" : w.count ? " some" : "")}
-                      title={w.noData ? `w/c ${fmtDay(w.week)}: before the data starts`
-                        : `w/c ${fmtDay(w.week)}: ${w.count.toLocaleString("en-GB")} recalls` + (w.users.length ? `\n${w.users.join("\n")}` : "")} />
+                      {...tipOn(
+                        <>
+                          <b>Week of {fmtDay(w.week)}</b>
+                          {w.noData ? <div className="st-faint">Before the Omni data starts</div> : (
+                            <>
+                              <div>
+                                {w.count.toLocaleString("en-GB")} recall{w.count === 1 ? "" : "s"}{" "}
+                                <span className="st-faint">
+                                  {w.count >= MIN_WEEK_RECALLS ? "· counts as a used week" : w.count ? `· under ${MIN_WEEK_RECALLS}, doesn't count` : ""}
+                                </span>
+                              </div>
+                              {w.users.length > 0 && <ul>{w.users.map((u) => <li key={u}>{u}</li>)}</ul>}
+                            </>
+                          )}
+                        </>
+                      )} />
                   ))}
                 </div>
               </td>
@@ -260,8 +322,9 @@ export default function LirCohort({ lir, generatedAt }) {
           ))}
         </tbody>
       </table>
+      {tipEl}
       <p className="st-note">
-        Users = staff who recalled in the last {WINDOW} weeks (hover for who); “!” = one person doing it all.
+        Hover or tap a week square, the signal, Users or Renews for details. Users = staff who recalled in the last {WINDOW} weeks; “!” = one person doing it all.
         Renews = end of the initial contract term (1–3 years from commencement), from the finance contracts tracker;
         red when it's within 6 months and the practice isn't on track. As renewals come in, check that on-track practices
         renewed more often than the rest, and tune the bar if not.

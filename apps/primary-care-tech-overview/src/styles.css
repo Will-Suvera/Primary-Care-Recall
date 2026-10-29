@@ -746,3 +746,14 @@ tr.row-shaded td { border-bottom-color: var(--su-line); }
 .lir-wk.hit { background: rgba(72, 33, 144, .82); }
 .lir-wk.nodata { background: repeating-linear-gradient(45deg, var(--su-surface) 0 2px, transparent 2px 4px); }
 .lir-watch-h .ov-more { border: 0; background: none; padding: 0; font-family: inherit; }
+
+/* Retention watchlist: instant hover card */
+.lir-hov { cursor: help; }
+.lir-strip .lir-wk { cursor: help; transition: transform .08s; }
+.lir-strip .lir-wk:hover { transform: scaleY(1.25); outline: 2px solid var(--su-brand); outline-offset: 1px; }
+.lir-tip { position: fixed; z-index: 1000; max-width: 280px; padding: 8px 12px; border-radius: 8px; background: #1d1b26; color: #fff; font-size: 12.5px; line-height: 1.45; box-shadow: 0 6px 20px rgba(0,0,0,.18); pointer-events: none; }
+.lir-tip b { display: block; margin-bottom: 2px; }
+.lir-tip .st-faint { color: rgba(255,255,255,.7); }
+.lir-tip ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.lir-tip li { overflow-wrap: anywhere; }
+.lir-tip-warn { margin-top: 4px; color: #ffd28a; }
