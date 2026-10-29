@@ -276,6 +276,7 @@ export default function LirCohort({ lir, generatedAt }) {
                 {head.paid && <span className="su-status good lir-paid">PAID</span>}{" "}
                 <span className="st-faint">
                   PCN contract · {head.n} of {head.size} practices recalling{head.n ? " (below)" : ""}
+                  {head.idle?.length > 0 && <> · not yet: {head.idle.map((m) => m.name).join(", ")}</>}
                 </span>
               </td>
             </tr>

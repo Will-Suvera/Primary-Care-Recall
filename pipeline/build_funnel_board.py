@@ -1262,8 +1262,11 @@ for _p in lir_practices:
     if _p["ods"] not in _pcn_members:
         _expanded.append(_p)
         continue
-    _pcn = {"ods": _p["ods"], "name": _p["name"], "size": len(_pcn_members[_p["ods"]])}
     _ms = [m for m in _pcn_members[_p["ods"]] if m in lir_by_ods and m not in _lir_used]
+    # practices in the PCN not recalling (yet) — named on the PCN header, not given rows
+    _idle = [{"ods": m, "name": ((_geo_by_ods.get(m) or {}).get("name") or m).title()}
+             for m in _pcn_members[_p["ods"]] if m not in lir_by_ods]
+    _pcn = {"ods": _p["ods"], "name": _p["name"], "size": len(_pcn_members[_p["ods"]]), "idle": _idle}
     if not _ms:
         _expanded.append({**_p, "pcn": _pcn, "pcn_placeholder": True})
         continue
