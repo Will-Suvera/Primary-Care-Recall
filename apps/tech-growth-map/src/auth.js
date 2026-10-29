@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react'
 const CLIENT_ID = (import.meta.env && import.meta.env.VITE_GOOGLE_CLIENT_ID) || ''
 const DOMAIN = 'suvera.co.uk'
 const STORE_KEY = 'tgm.gauth'
+const SHARED_KEY = 'pcto.gauth' // the Recalls Overview's session
 
 function decodeJwt(t) {
   try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) }
@@ -26,13 +27,16 @@ export function useGoogleAuth() {
   useEffect(() => {
     if (!enabled) return
     let saved = null
-    try {
-      const raw = localStorage.getItem(STORE_KEY)
-      if (raw) {
-        const u = JSON.parse(raw)
-        if (u.exp * 1000 > Date.now()) { saved = u; setUser(u) }
-      }
-    } catch { /* ignore */ }
+    // On ops.suvera.com the map sits next to the Recalls Overview (same origin), so
+    // its Google session (sessionStorage "pcto.gauth", same OAuth client) lets you
+    // straight in from the sidebar — no second sign-in.
+    for (const read of [() => localStorage.getItem(STORE_KEY), () => sessionStorage.getItem(SHARED_KEY)]) {
+      try {
+        const raw = read()
+        const u = raw && JSON.parse(raw)
+        if (u && u.exp * 1000 > Date.now() && (u.email || '').endsWith('@' + DOMAIN)) { saved = u; setUser(u); break }
+      } catch { /* storage blocked or corrupt */ }
+    }
     const s = document.createElement('script')
     s.src = 'https://accounts.google.com/gsi/client'
     s.async = true; s.defer = true

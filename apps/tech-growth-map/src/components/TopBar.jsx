@@ -49,6 +49,10 @@ export default function TopBar({ timeline, tv = false, onToggleTv }) {
   return (
     <div className="top-bar">
       <div className="logo-section">
+        {/* served at ops.suvera.com/map, beside the Recalls Overview: a way back */}
+        {import.meta.env.BASE_URL === '/map/' && !tv && (
+          <a className="back-to-ops" href="/" title="Back to the Recalls Overview">← Recalls Overview</a>
+        )}
         <img src={`${import.meta.env.BASE_URL}assets/${tv ? 'suvera-logo-light.png' : 'suvera-logo.png'}`} alt="Suvera" />
         <div className="title-group">
           <h1>Suvera Patient Growth In UK</h1>
