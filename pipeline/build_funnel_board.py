@@ -1169,16 +1169,21 @@ def _fetch_sheet(src):
 
 
 def parse_recalls_sheet(text):
-    """Long-format Omni CSV -> {ODS: {"name", "days": {date: n}, "users": {email: [dates]}}}.
+    """Long-format Omni CSV -> {ODS: {"name", "days": {date: n}, "users": {email: [dates]},
+    "bulk": {date: n}, "sugg": {date: [accepted, judged]}}}.
     Columns are found by header name, so Omni reordering them is harmless. Rows with
-    no ODS code are recalls not tied to a practice and are dropped."""
+    no ODS code are recalls not tied to a practice and are dropped. Optional columns:
+    "Is Part Of Bulk Recall" (patients recalled in a bulk run) and "All Preselected
+    Selected" + "Planner Recall Method" (automated recalls where every Planner
+    suggestion was kept; blank = nothing was suggested, so not judged)."""
     rows = list(_csv.DictReader(_io.StringIO(text)))
     if not rows:
-        return {}, None, None
+        return {}, None, None, {}
     cols = list(rows[0].keys())
     pick = lambda *keys: next((c for c in cols if all(k in c.lower() for k in keys)), None)
     c_ods, c_date, c_email = pick("ods"), pick("date"), pick("email")
     c_n, c_name = pick("count"), pick("practice", "name")
+    c_bulk, c_sugg, c_method = pick("bulk"), pick("preselected"), pick("method")
     if not (c_ods and c_date and c_n):
         raise ValueError(f"unexpected columns: {cols}")
     out, dates = {}, []
@@ -1194,22 +1199,31 @@ def parse_recalls_sheet(text):
             n = 0
         if not ods or ods == "NULL" or not n:
             continue
-        p = out.setdefault(ods, {"name": (r.get(c_name) or "").strip(), "days": {}, "users": {}})
+        p = out.setdefault(ods, {"name": (r.get(c_name) or "").strip(), "days": {}, "users": {}, "bulk": {}, "sugg": {}})
         p["days"][day] = p["days"].get(day, 0) + n
+        if c_bulk and (r.get(c_bulk) or "").strip().lower() == "true":
+            p["bulk"][day] = p["bulk"].get(day, 0) + n
+        kept = (r.get(c_sugg) or "").strip().lower() if c_sugg else ""
+        if kept in ("true", "false") and (not c_method or (r.get(c_method) or "").strip().lower() == "automated"):
+            sg = p["sugg"].setdefault(day, [0, 0])
+            sg[0] += n if kept == "true" else 0
+            sg[1] += n
         em = (r.get(c_email) or "").strip().lower() if c_email else ""
         if em:
             p["users"].setdefault(em, set()).add(day)
     for p in out.values():
         p["days"] = dict(sorted(p["days"].items()))
         p["users"] = {e: sorted(d) for e, d in sorted(p["users"].items())}
-    return out, (min(dates) if dates else None), (max(dates) if dates else None)
+        p["bulk"] = dict(sorted(p["bulk"].items()))
+        p["sugg"] = dict(sorted(p["sugg"].items()))
+    return out, (min(dates) if dates else None), (max(dates) if dates else None), {"bulk": bool(c_bulk), "sugg": bool(c_sugg)}
 
 
-lir_by_ods, lir_from, lir_to, lir_source, lir_error = {}, None, None, None, None
+lir_by_ods, lir_from, lir_to, lir_source, lir_error, lir_has = {}, None, None, None, None, {}
 _lir_src = os.environ.get("OMNI_RECALLS_SHEET", "").strip()
 if _lir_src:
     try:
-        lir_by_ods, lir_from, lir_to = parse_recalls_sheet(_fetch_sheet(_lir_src))
+        lir_by_ods, lir_from, lir_to, lir_has = parse_recalls_sheet(_fetch_sheet(_lir_src))
         lir_source = "omni_sheet"
     except Exception as _e:
         lir_error = str(_e)[:160]
@@ -1224,6 +1238,7 @@ for _o, _p in lir_by_ods.items():
     _lir_norm2ods.setdefault(_lir_key(_p["name"]), set()).add(_o)
 
 lir_practices, _lir_used = [], set()
+_usage = lambda src: {k: src.get(k, {}) for k in ("days", "users", "bulk", "sugg")}
 # two deals on one practice (e.g. a renewal) count once: paid, then live, first
 for r in sorted(rows, key=lambda r: (not r.get("paid"), r["stage"] != "live")):
     if r["stage"] not in ("dpa_signed", "live"):
@@ -1243,7 +1258,7 @@ for r in sorted(rows, key=lambda r: (not r.get("paid"), r["stage"] != "live")):
     lir_practices.append({
         "deal_id": r.get("deal_id"), "name": r["name"], "ods": _o, "stage": r["stage"],
         "paid": bool(r.get("paid")), "patients": r.get("patients"),
-        "signed": _signed, "signed_approx": not _sd.get("dpa_signed"), "days": _src.get("days", {}), "users": _src.get("users", {}),
+        "signed": _signed, "signed_approx": not _sd.get("dpa_signed"), **_usage(_src),
     })
 # A PCN deal (e.g. iGPC, U02731) never recalls itself: its member practices do. The
 # contract is the PCN's, but usage is per practice — so each member that recalls (and
@@ -1275,7 +1290,7 @@ for _p in lir_practices:
         _src = lir_by_ods[_m]
         _expanded.append({**_p, "name": _src["name"], "ods": _m, "pcn": _pcn,
                           "patients": (_geo_by_ods.get(_m) or {}).get("patients"),
-                          "days": _src["days"], "users": _src["users"]})
+                          **_usage(_src)})
 lir_practices = _expanded
 # Practices recalling in Omni with no DPA-signed/live Planner deal (customers from
 # before the HubSpot pipeline, e.g. Cape Hill): cohort = month of first recall. One
@@ -1287,7 +1302,7 @@ for _o, _p in lir_by_ods.items():
         "deal_id": None, "name": _p["name"], "ods": _o, "stage": "no_deal", "paid": False,
         "patients": (_geo_by_ods.get(_o) or {}).get("patients"),
         "signed": next(iter(_p["days"])), "signed_approx": True,
-        "days": _p["days"], "users": _p["users"],
+        **_usage(_p),
     })
 # --- contract terms -> renewal dates ---
 # Renewals come 1-3 years after commencement, so the LIR above is the early read on
@@ -1341,7 +1356,7 @@ for _p in lir_practices:
     _p["contract"] = _contract_by_ods.get(_owner["ods"]) or _contract_by_name.get(
         _lir_key(PAID_PREFIX_RE.sub("", _owner["name"], count=1)))
 
-lir = {"source": lir_source, "error": lir_error, "from": lir_from, "to": lir_to, "practices": lir_practices}
+lir = {"source": lir_source, "error": lir_error, "from": lir_from, "to": lir_to, "has": lir_has, "practices": lir_practices}
 
 # --- data warnings (source divergence etc.) surfaced on the board itself ---
 data_warnings = []

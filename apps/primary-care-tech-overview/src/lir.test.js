@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addDays, addMonths, buildLir, lastMondayOf, monday, monthsBetween, practiceSignal } from "./lir.js";
+import { addDays, addMonths, buildLir, lastMondayOf, mix, monday, monthsBetween, passes, practiceSignal } from "./lir.js";
 
 // lastWeek = w/c Mon 19 Oct 2026; data from Mon 1 Jun 2026
 const ctx = { need: 3, lastWeek: "2026-10-19", firstWeek: "2026-06-01" };
@@ -72,5 +72,37 @@ describe("lir (weekly usage)", () => {
     expect(r.watch[0].ods).toBe("A"); // A: on track in Aug, nothing since -> stopped, listed first
     expect(r.watch[0].status).toBe("stopped");
     expect([r.onTrack, r.judged]).toEqual([1, 3]);
+  });
+
+  it("bulk and suggestions are shares of patients, blank below 20", () => {
+    const p = P({ days: { "2026-07-01": 60, "2026-10-20": 40 }, bulk: { "2026-07-01": 50 }, sugg: { "2026-07-01": [45, 50], "2026-10-20": [30, 40] } });
+    const m = mix(p, null, "2026-10-25");
+    expect([m.bulk, Math.round(m.sugg)]).toEqual([50, 83]);
+    expect(mix(P({ days: { "2026-07-01": 19 }, bulk: { "2026-07-01": 19 } }), null, "2026-10-25").bulk).toBeNull();
+  });
+
+  it("reads all-time share with a last-4-weeks arrow", () => {
+    // 100 bulk in July, then 40 single in the last 4 weeks: 71% bulk overall, 0% lately
+    const s = practiceSignal(P({ days: { "2026-07-01": 100, "2026-10-20": 40 }, bulk: { "2026-07-01": 100 } }), ctx);
+    expect(Math.round(s.allMix.bulk)).toBe(71);
+    expect(s.trends.bulk).toBe("down");
+    expect(passes(s, "bulk", 70)).toBe(true);
+    expect(passes(s, "sugg", 90)).toBeNull();
+    // the weekly strip carries the split for the hover card
+    expect(s.strip.at(-1)).toMatchObject({ count: 40, bulk: 0 });
+  });
+
+  it("cohort cells for bulk count only practices with enough recalls", () => {
+    const lir = {
+      from: "2026-08-03",
+      practices: [
+        P({ ods: "A", signed: "2026-07-10", days: { "2026-08-12": 100 }, bulk: { "2026-08-12": 80 } }),
+        P({ ods: "B", signed: "2026-07-20", days: { "2026-08-12": 100 }, bulk: { "2026-08-12": 10 } }),
+        P({ ods: "C", signed: "2026-07-20", days: { "2026-08-12": 5 } }),
+      ],
+    };
+    const r = buildLir(lir, { today: "2026-10-28", metric: "bulk", bars: { bulk: 50 } });
+    expect(r.cohorts[0].cells[0]).toMatchObject({ month: "2026-08", hit: 1, of: 2, pct: 50 });
+    expect(r.cards.bulk).toMatchObject({ pass: 1, of: 2, all: 44 }); // 90 bulk of 205 patients
   });
 });
