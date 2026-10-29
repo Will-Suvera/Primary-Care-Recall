@@ -1245,6 +1245,35 @@ for r in sorted(rows, key=lambda r: (not r.get("paid"), r["stage"] != "live")):
         "paid": bool(r.get("paid")), "patients": r.get("patients"),
         "signed": _signed, "signed_approx": not _sd.get("dpa_signed"), "days": _src.get("days", {}), "users": _src.get("users", {}),
     })
+# A PCN deal (e.g. iGPC, U02731) never recalls itself: its member practices do. Fold
+# the recalls of members that have no deal of their own into the PCN's row, and list
+# who's recalling, so they aren't shown again as separate "no deal" practices.
+try:
+    from ods_pcn import fetch_pcn_membership
+    _pcn_members = {}
+    for _m, _v in fetch_pcn_membership().items():
+        _pcn_members.setdefault(_v["pcn_code"].upper(), []).append(_m.upper())
+except Exception as _e:  # noqa: BLE001 — ePCN outage: PCN rows just show no recalls
+    _pcn_members = {}
+    print(f"  WARN: PCN membership unavailable ({_e}); PCN deals won't pick up practice recalls")
+for _p in lir_practices:
+    _ms = [m for m in _pcn_members.get(_p["ods"], []) if m in lir_by_ods and m not in _lir_used]
+    if _p["ods"] not in _pcn_members:
+        continue
+    _p["pcn"] = True
+    _days, _users, _members = dict(_p["days"]), {k: list(v) for k, v in _p["users"].items()}, []
+    for _m in _ms:
+        _src = lir_by_ods[_m]
+        _lir_used.add(_m)
+        for _d, _n in _src["days"].items():
+            _days[_d] = _days.get(_d, 0) + _n
+        for _e2, _ds in _src["users"].items():
+            _users[_e2] = sorted(set(_users.get(_e2, [])) | set(_ds))
+        _members.append({"ods": _m, "name": _src["name"], "recalls": sum(_src["days"].values())})
+    _p["days"] = dict(sorted(_days.items()))
+    _p["users"] = _users
+    _p["members"] = sorted(_members, key=lambda m: -m["recalls"])
+    _p["member_count"] = len(_pcn_members[_p["ods"]])
 # Practices recalling in Omni with no DPA-signed/live Planner deal (customers from
 # before the HubSpot pipeline, e.g. Cape Hill): cohort = month of first recall. One
 # test recall isn't usage, so they need a real week (>= 5 recalls) to be listed.

@@ -57,7 +57,7 @@ function CohortDetail({ sel, need }) {
         <ul>
           {c.members.map((p) => (
             <li key={p.ods}>
-              <span><b>{p.name}</b> <PaidChip p={p} /></span>
+              <span><b>{p.name}</b> <PaidChip p={p} />{p.pcn && p.members?.length ? <span className="st-faint"> via {p.members.map((m) => m.name).join(", ")}</span> : null}</span>
               <span className="st-faint">
                 {p.stage === "no_deal" ? `first recall ${fmtDay(p.signed.slice(0, 10))}` : `DPA signed ${fmtDay(p.signed.slice(0, 10))}${p.signed_approx ? " (approx.)" : ""}`}
                 {p.contract ? ` · paid contract from ${fmtDay(p.contract.start)}` : ""}
@@ -254,6 +254,21 @@ export default function LirCohort({ lir, generatedAt }) {
               <td>
                 <b>{p.name}</b> {p.paid && <span className="su-status good lir-paid">PAID</span>}
                 <div className="st-faint">{p.ods}{p.patients ? ` · ${p.patients.toLocaleString("en-GB")} patients` : ""}{p.stage === "no_deal" ? " · no Suvera Recall deal" : ""}</div>
+                {p.pcn && (
+                  // a PCN never recalls itself: its row is the sum of its practices
+                  <div className="lir-pcn lir-hov" {...tipOn(
+                    <>
+                      <b>{p.name}: recalls come from its practices</b>
+                      {p.members?.length ? (
+                        <ul>{p.members.map((m) => <li key={m.ods}>{m.name} ({m.ods}): {m.recalls.toLocaleString("en-GB")} recalls</li>)}</ul>
+                      ) : <div className="st-faint">No practice has recalled yet</div>}
+                      <div className="st-faint">{p.members?.length || 0} of {p.member_count} practices in the PCN recalling</div>
+                    </>
+                  )}>
+                    <span className="lir-pcn-tag">PCN</span>{" "}
+                    {p.members?.length ? <>via {p.members.map((m) => m.name).join(", ")}</> : "no practice recalling yet"}
+                  </div>
+                )}
               </td>
               <td className="lir-hov" {...tipOn(
                 <>
