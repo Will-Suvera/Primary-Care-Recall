@@ -110,13 +110,26 @@ jobs:
           cache: 'npm'
           cache-dependency-path: apps/tech-growth-map/package-lock.json
 
+      # Once the map has moved to <OPS_HOST>/map (repo variable set), GitHub Pages
+      # serves a redirect instead: index.html for the root, 404.html for deep links.
       - name: Build site
+        if: ${{ vars.OPS_HOST == '' }}
         working-directory: apps/tech-growth-map
         env:
           # Bakes the Google SSO gate into the build (same OAuth client as the
           # Planner dashboard). Unset locally -> auth disabled in dev.
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
         run: npm ci && npx vite build
+
+      - name: Build redirect to ${{ vars.OPS_HOST }}
+        if: ${{ vars.OPS_HOST != '' }}
+        env:
+          OPS_HOST: ${{ vars.OPS_HOST }}
+        run: |
+          mkdir -p apps/tech-growth-map/dist
+          sed "s/__OPS_HOST__/${OPS_HOST}/g" apps/tech-growth-map/redirect/index.html > apps/tech-growth-map/dist/index.html
+          cp apps/tech-growth-map/dist/index.html apps/tech-growth-map/dist/404.html
+          echo "growthmap.suvera.com" > apps/tech-growth-map/dist/CNAME
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

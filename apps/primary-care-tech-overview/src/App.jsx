@@ -138,6 +138,8 @@ export default function App() {
           <button className={"su-nav-item" + (tab === "retention" ? " active" : "")} onClick={() => selectTab("retention")}>
             Retention
           </button>
+          {/* the growth map is built into the same deploy at /map */}
+          <a className="su-nav-item" href="/map/">Growth map</a>
         </nav>
 
         {tab === "overview" ? (

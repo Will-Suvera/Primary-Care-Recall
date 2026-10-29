@@ -769,3 +769,4 @@ tr.row-shaded td { border-bottom-color: var(--su-line); }
 .lir-tip ul { margin: 4px 0 0; padding: 0; list-style: none; }
 .lir-tip li { overflow-wrap: anywhere; }
 .lir-tip-warn { margin-top: 4px; color: #ffd28a; }
+a.su-nav-item { text-decoration: none; }

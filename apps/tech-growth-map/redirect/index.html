@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Moved to ops.suvera.com</title>
+  <!-- growthmap.suvera.com has moved; GitHub Pages can't 301, so redirect here,
+       keeping the path and query. Deployed in place of the map once OPS_HOST is set. -->
+  <script>
+    location.replace("https://__OPS_HOST__/map" + location.pathname + location.search + location.hash);
+  </script>
+  <meta http-equiv="refresh" content="0; url=https://__OPS_HOST__/map/" />
+</head>
+<body style="font-family: system-ui, sans-serif; padding: 40px;">
+  The growth map has moved to <a href="https://__OPS_HOST__/map/">__OPS_HOST__/map</a>.
+</body>
+</html>

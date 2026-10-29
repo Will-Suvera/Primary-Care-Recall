@@ -16,6 +16,10 @@ name: Deploy Planner (Cloudflare Pages)
 #   OMNI_RECALLS_SHEET     — URL of the Omni daily-recalls Google Sheet (Retention tab; optional)
 #   GOOGLE_SA_JSON         — service-account key JSON with Viewer access to that sheet
 #
+# Repo variable OPS_HOST (e.g. ops.suvera.com): once that custom domain is attached
+# to this Pages project, setting it 301s planner-onboarding.pages.dev there and
+# turns growthmap.suvera.com into a redirect to <OPS_HOST>/map (refresh-waitlist.yml).
+#
 # Cloudflare Pages project env vars (set in the dashboard, NOT here):
 #   NEON_DATABASE_URL (required), and optionally HUBSPOT_API_TOKEN +
 #   HUBSPOT_NOTES_SYNC / HUBSPOT_DEAL_WRITE (see functions/api/[[path]].js).
@@ -30,6 +34,7 @@ on:
     paths:
       - 'apps/primary-care-tech-overview/**'
       - 'pipeline/**'
+      - 'apps/tech-growth-map/**'
       - '.github/workflows/deploy-planner-cf.yml'
   schedule:
     # Every 30 min: regenerate data + redeploy. GitHub delays scheduled runs (the old
@@ -155,6 +160,16 @@ jobs:
           npm ci
           npm run build
 
+      # The growth map ships in the same deploy at /map, so both tools sit behind one
+      # domain (and one Cloudflare Access policy). Its data is the committed map data.
+      - name: Build growth map into /map
+        working-directory: apps/tech-growth-map
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          npm ci
+          npx vite build --base /map/ --outDir ../primary-care-tech-overview/dist/map --emptyOutDir
+
       # The dashboard data must never be a public static file — strip it from the
       # build output. The app loads it from the authenticated API instead.
       - name: Strip private data from the public bundle
@@ -170,10 +185,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           HUBSPOT_API_TOKEN: ${{ secrets.HUBSPOT_API_TOKEN }}
+          OPS_HOST: ${{ vars.OPS_HOST }}
         run: |
           printf '%s' "$HUBSPOT_API_TOKEN" | npx wrangler@4 pages secret put HUBSPOT_API_TOKEN --project-name=planner-onboarding
           printf '1' | npx wrangler@4 pages secret put HUBSPOT_NOTES_SYNC --project-name=planner-onboarding
           printf '1' | npx wrangler@4 pages secret put HUBSPOT_DEAL_WRITE --project-name=planner-onboarding
+          # functions/_middleware.js: pages.dev -> OPS_HOST redirect ("off" until set)
+          printf '%s' "${OPS_HOST:-off}" | npx wrangler@4 pages secret put CANONICAL_HOST --project-name=planner-onboarding
 
       # ---------- deploy dist/ (static + the Pages Function) to Cloudflare ----------
       - name: Deploy to Cloudflare Pages
