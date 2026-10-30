@@ -25,6 +25,7 @@ import {
   getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
   getPractices, createPractice, setPracticeOds, removePractice, lookupOds,
+  getLirExcluded, setLirExcluded,
   verifyHubspotSignature, makeHubspotReader, handleDealStageEvents,
 } from "../../api/onboarding-core.mjs";
 // The dashboard data (generated fresh in CI) is bundled into this Function and
@@ -219,6 +220,7 @@ export async function onRequest(context) {
       if (sub === "/hidden") return J(await getHiddenActivity(sql));
       if (sub === "/dropped") return J(await getDropped(sql));
       if (sub === "/practices") return J(await getPractices(sql));
+      if (sub === "/lir-excluded") return J(await getLirExcluded(sql));
       if (sub === "/ods-lookup") {
         const found = await lookupOds(url.searchParams.get("ods"));
         return J(found ? { status: 200, body: found } : { status: 404, body: { error: "not found" } });
@@ -267,6 +269,11 @@ export async function onRequest(context) {
       const auth = await gate(); if (!auth) return unauth();
       const body = await req.json();
       return J(await markDropped(sql, setDealDropped, { ods: body.ods, deal_id: body.deal_id ?? null, by: firstNameFromEmail(auth.email) || body.by || null }));
+    }
+    if (req.method === "POST" && sub === "/lir-excluded") {
+      const auth = await gate(); if (!auth) return unauth();
+      const body = await req.json();
+      return J(await setLirExcluded(sql, { ods: body.ods, excluded: body.excluded, by: firstNameFromEmail(auth.email) || null }));
     }
     if (sub === "/practices" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
       const auth = await gate(); if (!auth) return unauth();

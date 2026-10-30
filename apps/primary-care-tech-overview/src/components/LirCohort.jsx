@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ONB_BASE } from "../onboarding.js";
 import { buildLir, METRICS, MIN_MIX, MIN_WEEK_RECALLS, STATUS, WINDOW } from "../lir.js";
 
 // Leading indicator of retention, Roberge "The Science of Scaling" ch.4: practices
@@ -111,7 +112,13 @@ const PaidChip = ({ p }) => (p.paid ? <span className="su-status good lir-paid">
 
 // The panel under the cohort table: who is in the hovered/tapped signing month, and
 // (for a cell) who was using Suvera Recall regularly at that point.
-function CohortDetail({ sel, metric, k }) {
+// leave a practice out of the cohorts (shared, saved to Neon)
+const ExcludeBtn = ({ ods, onExclude }) => (
+  <button className="lir-excl-btn" title="Leave out of the cohorts, cards and watchlist (e.g. a test site or not a real customer). Everyone sees this."
+    onClick={(e) => { e.stopPropagation(); onExclude(ods, true); }}>Exclude</button>
+);
+
+function CohortDetail({ sel, metric, k, onExclude }) {
   if (!sel) return <div className="lir-detail lir-detail-empty">Hover or tap a month or a % to see the practices behind it.</div>;
   const { cohort: c, cell } = sel;
   if (!cell) {
@@ -123,6 +130,7 @@ function CohortDetail({ sel, metric, k }) {
             <li key={p.ods}>
               <span><b>{p.name}</b> <PaidChip p={p} />{p.pcn && !p.pcn_placeholder ? <span className="st-faint"> · {p.pcn.name}</span> : null}</span>
               <span className="st-faint">
+                <ExcludeBtn ods={p.ods} onExclude={onExclude} />
                 {p.stage === "no_deal" ? `first recall ${fmtDay(p.signed.slice(0, 10))}` : `DPA signed ${fmtDay(p.signed.slice(0, 10))}${p.signed_approx ? " (approx.)" : ""}`}
                 {p.contract ? ` · paid contract from ${fmtDay(p.contract.start)}` : ""}
               </span>
@@ -145,7 +153,7 @@ function CohortDetail({ sel, metric, k }) {
         {rows.map((p) => (
           <li key={p.ods}>
             <span>{p.value == null ? "·" : p.onTrack ? "✓" : "✗"} <b>{p.name}</b> <PaidChip p={p} /></span>
-            <span className={p.onTrack ? "" : "st-faint"}>{show(p.value)}{p.value != null && !p.onTrack ? ` (needs ${metric === "consistency" ? k : `${k}%`})` : ""}</span>
+            <span className={p.onTrack ? "" : "st-faint"}><ExcludeBtn ods={p.ods} onExclude={onExclude} />{show(p.value)}{p.value != null && !p.onTrack ? ` (needs ${metric === "consistency" ? k : `${k}%`})` : ""}</span>
           </li>
         ))}
       </ul>
@@ -153,19 +161,43 @@ function CohortDetail({ sel, metric, k }) {
   );
 }
 
-export default function LirCohort({ lir, generatedAt }) {
+export default function LirCohort({ lir, generatedAt, auth }) {
   const [metric, setMetric] = useState("consistency");
   const [bars, setBars] = useState(() => Object.fromEntries(Object.entries(METRICS).map(([m, x]) => [m, x.def])));
   const [sort, setSort] = useState({ key: "signal", dir: 1 });
   const [plan, setPlan] = useState("all");
+  // practices left out of the cohorts — the book counts only ideal-customer-profile
+  // customers acquired each month; this is the hand-picked version of that
+  const [excluded, setExcluded] = useState({});
+  const [exclErr, setExclErr] = useState(null);
+  const headers = auth?.token ? { Authorization: `Bearer ${auth.token}` } : {};
+  useEffect(() => {
+    fetch(`${ONB_BASE}/lir-excluded`, { headers }).then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((x) => setExcluded(x && typeof x === "object" ? x : {}))
+      .catch(() => setExclErr("Couldn't load the excluded practices, so everyone is counted."));
+  }, [auth?.token]);
+  const setExcl = (ods, on) => {
+    setExcluded((prev) => {
+      const next = { ...prev };
+      if (on) next[ods] = { by: auth?.email ? auth.email.split("@")[0].split(".")[0] : "you", at: new Date().toISOString() };
+      else delete next[ods];
+      return next;
+    });
+    setSel(null);
+    fetch(`${ONB_BASE}/lir-excluded`, {
+      method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ ods, excluded: on }),
+    }).then((r) => { if (!r.ok) throw new Error(r.status); setExclErr(null); })
+      .catch(() => setExclErr("That change didn't save. Check your connection and try again."));
+  };
   const [sel, setSel] = useState(null);
   const [showAll, setShowAll] = useState(false);
   const [tipOn, tipEl] = useTip();
   const today = (generatedAt || new Date().toISOString()).slice(0, 10);
   const r = useMemo(() => {
-    const keep = (p) => plan === "all" || (plan === "paid") === Boolean(p.paid);
+    const keep = (p) => (plan === "all" || (plan === "paid") === Boolean(p.paid)) && !excluded[p.ods];
     return buildLir(lir && { ...lir, practices: (lir.practices || []).filter(keep) }, { need: bars.consistency, bars, metric, today });
-  }, [lir, bars, metric, today, plan]);
+  }, [lir, bars, metric, today, plan, excluded]);
+  const left = (lir?.practices || []).filter((p) => excluded[p.ods]);
   const need = bars.consistency, k = bars[metric];
 
   if (!lir || r.empty) {
@@ -356,9 +388,23 @@ export default function LirCohort({ lir, generatedAt }) {
           </tbody>
         </table>
       </div>
-      <CohortDetail sel={sel && r.cohorts.find((c) => c.month === sel.cohort.month) && sel} metric={metric} k={k} />
+      <CohortDetail sel={sel && r.cohorts.find((c) => c.month === sel.cohort.month) && sel} metric={metric} k={k} onExclude={setExcl} />
+      {(left.length > 0 || exclErr) && (
+        <div className="lir-excl">
+          {exclErr && <div className="lir-tip-warn bad">{exclErr}</div>}
+          {left.length > 0 && <>
+            <b>Left out of the cohorts ({left.length}):</b>{" "}
+            {left.map((p) => (
+              <span key={p.ods} className="lir-excl-chip" title={`Excluded by ${excluded[p.ods]?.by || "someone"}${excluded[p.ods]?.at ? ` on ${fmtDay(String(excluded[p.ods].at).slice(0, 10))}` : ""}`}>
+                {p.name} <button className="lir-excl-btn" onClick={() => setExcl(p.ods, false)}>Include</button>
+              </span>
+            ))}
+          </>}
+        </div>
+      )}
       <p className="st-note">
-        {COPY[metric].note(k)} The current month is left out until it's complete. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
+        {COPY[metric].note(k)} The current month is left out until it's complete. To leave a practice out of everything
+        on this tab (a test site, or not a real customer), hover its signing month and click Exclude; everyone sees the change. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
         recalling with no Suvera Recall deal in HubSpot are grouped by the month of their first recall.
       </p>
 

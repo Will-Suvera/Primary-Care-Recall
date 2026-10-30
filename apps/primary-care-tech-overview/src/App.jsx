@@ -174,7 +174,7 @@ export default function App() {
         ) : tab === "onboarding" ? (
           <OnboardingHub data={data} visits={visits} auth={auth.user} />
         ) : tab === "retention" ? (
-          <LirCohort lir={data.lir} generatedAt={data.generated_at} />
+          <LirCohort lir={data.lir} generatedAt={data.generated_at} auth={auth.user} />
         ) : (
           <FunnelBoard data={data} auth={auth.user} visits={visits} />
         )}

@@ -184,6 +184,35 @@ export async function hideActivity(sql, { ods, activity_key, by = null }) {
   return result({ ok: true, ods, activity_key });
 }
 
+/* ---------------- retention: practices left out of the cohorts ---------------- */
+// Like the book's "ICP customers acquired": practices that were never a real fit
+// (test sites, signed but not a genuine customer) are left out of the Retention
+// tab's cohorts, cards and watchlist. A shared list, so everyone sees the same
+// cohorts. The table creates itself, so there's no migration step.
+const ensureLirExcluded = (sql) => sql`create table if not exists lir_excluded (
+  ods text primary key, excluded_by text, excluded_at timestamptz not null default now())`;
+
+// GET /api/onboarding/lir-excluded → { ods: {by, at} }
+export async function getLirExcluded(sql) {
+  await ensureLirExcluded(sql);
+  const rows = await sql`select ods, excluded_by, excluded_at from lir_excluded`;
+  return result(Object.fromEntries(rows.map((r) => [r.ods, { by: r.excluded_by, at: r.excluded_at }])));
+}
+
+// POST /api/onboarding/lir-excluded {ods, excluded} → leave a practice out (true) or put it back (false)
+export async function setLirExcluded(sql, { ods, excluded, by = null }) {
+  const code = String(ods || "").trim().toUpperCase();
+  if (!code) return result({ error: "ods is required" }, 400);
+  await ensureLirExcluded(sql);
+  if (excluded) {
+    await sql`insert into lir_excluded (ods, excluded_by) values (${code}, ${by})
+      on conflict (ods) do update set excluded_by = excluded.excluded_by, excluded_at = now()`;
+  } else {
+    await sql`delete from lir_excluded where ods = ${code}`;
+  }
+  return result({ ok: true, ods: code, excluded: !!excluded });
+}
+
 /* ---------------- blocked (orthogonal to progress) ---------------- */
 // "Blocked" is a flag layered on a step, not a 4th progress state — a step can be
 // in-progress AND blocked-on-labs. waiting_on = who we're waiting on.

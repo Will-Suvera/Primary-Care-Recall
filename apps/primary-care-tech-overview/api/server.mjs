@@ -11,6 +11,7 @@ import {
   getCurrent, getHistory, getEvents, getNotes, postStep, postNote, editNote, deleteNote,
   getBlocks, setBlock, getLive, markLive, getHiddenActivity, hideActivity, getDropped, markDropped,
   getPractices, createPractice, setPracticeOds, removePractice, lookupOds,
+  getLirExcluded, setLirExcluded,
   verifyHubspotSignature, makeHubspotReader, handleDealStageEvents,
 } from "./onboarding-core.mjs";
 
@@ -104,6 +105,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/onboarding/dropped") return send(await getDropped(sql));
     if (req.method === "POST" && p === "/api/onboarding/dropped") return send(await markDropped(sql, setDealDropped, await readBody(req)));
 
+    if (req.method === "GET" && p === "/api/onboarding/lir-excluded") return send(await getLirExcluded(sql));
+    if (req.method === "POST" && p === "/api/onboarding/lir-excluded") return send(await setLirExcluded(sql, await readBody(req)));
     if (req.method === "GET" && p === "/api/onboarding/practices") return send(await getPractices(sql));
     if (req.method === "POST" && p === "/api/onboarding/practices") return send(await createPractice(sql, await readBody(req)));
     if (req.method === "PATCH" && p === "/api/onboarding/practices") return send(await setPracticeOds(sql, await readBody(req)));
