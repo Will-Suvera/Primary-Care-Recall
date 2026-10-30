@@ -146,7 +146,7 @@ function CohortDetail({ sel, metric, k, onExclude }) {
   return (
     <div className="lir-detail">
       <div className="lir-detail-h">
-        <b>Signed {fmtMonth(c.month)}, {cell.k} month{cell.k === 1 ? "" : "s"} later (end of {fmtMonth(cell.month)}):</b>{" "}
+        <b>Signed {fmtMonth(c.month)}, {cell.k === 0 ? "by the end of the signing month" : `${cell.k} month${cell.k === 1 ? "" : "s"} later (end of ${fmtMonth(cell.month)})`}:</b>{" "}
         {cell.empty ? `none with ${MIN_MIX}+ recalls yet` : `${cell.hit} of ${cell.of} ${COPY[metric].does(k)} (${cell.pct}%)`}
       </div>
       <ul>
@@ -245,14 +245,15 @@ export default function LirCohort({ lir, generatedAt, auth }) {
   }
   const renewSoon = [...renewByOwner.values()];
   // one-line takeaway: the typical and best share of a signing month that became regular users
-  const filled = r.cohorts.flatMap((c) => c.cells.filter((x) => !x.noData && !x.empty && c.n));
+  // the signing month is onboarding speed, not the habit, so the typical figure skips it
+  const filled = r.cohorts.flatMap((c) => c.cells.filter((x) => x.k > 0 && !x.noData && !x.empty && c.n));
   const pcts = filled.map((x) => x.pct).sort((a, b) => a - b);
   const typical = pcts.length ? pcts[Math.floor(pcts.length / 2)] : null;
   const best = pcts.length ? pcts[pcts.length - 1] : null;
   // worked example: the biggest signing group, at its latest month
   const ex = r.cohorts.filter((c) => c.cells.some((x) => !x.noData && !x.empty)).sort((a, b) => b.n - a.n)[0];
   const exCell = ex?.cells.filter((x) => !x.noData && !x.empty).pop();
-  const cols = Array.from({ length: r.maxK }, (_, i) => i + 1);
+  const cols = Array.from({ length: r.maxK }, (_, i) => i);
 
   return (
     <section className="ov-card lir-card" id="retention">
@@ -342,7 +343,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
       {exCell && (
         <p className="st-note lir-howto">
           How to read it: each row is the practices that signed in that month. E.g. <b>{ex.n} practices signed in {fmtMonth(ex.month)}</b> —{" "}
-          {exCell.k} month{exCell.k > 1 ? "s" : ""} later, {exCell.hit} of {metric === "consistency" ? "them" : `the ${exCell.of} with ${MIN_MIX}+ recalls`} ({exCell.pct}%){" "}
+          {exCell.k === 0 ? "by the end of that month" : `${exCell.k} month${exCell.k > 1 ? "s" : ""} later`}, {exCell.hit} of {metric === "consistency" ? "them" : `the ${exCell.of} with ${MIN_MIX}+ recalls`} ({exCell.pct}%){" "}
           {COPY[metric].does(k).replace(/^are /, "were ")}. Hover or tap any month or % to see the practices in the panel below the table.
         </p>
       )}
@@ -354,7 +355,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
               {cols.length > 0 && <th colSpan={cols.length} className="lir-group">{COPY[metric].group(k)}</th>}
             </tr>
             <tr>
-              {cols.map((col) => <th key={col} className="num">{col === 1 ? "1 month" : `${col} months`}</th>)}
+              {cols.map((col) => <th key={col} className="num">{col === 0 ? "Signing month" : col === 1 ? "1 month" : `${col} months`}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -367,7 +368,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
                 <td className="num su-num">{c.n}</td>
                 {c.cells.length === 0 && <td colSpan={cols.length} className="st-faint lir-toonew">signed too recently to judge</td>}
                 {c.cells.length > 0 && cols.map((col) => {
-                  const cell = c.cells[col - 1];
+                  const cell = c.cells[col];
                   if (!cell) return <td key={col} />;
                   if (cell.noData) return <td key={col} className="lir-cell nodata" title={`${fmtMonth(cell.month)}: before the Omni data starts`} />;
                   if (cell.empty) {
@@ -403,7 +404,8 @@ export default function LirCohort({ lir, generatedAt, auth }) {
         </div>
       )}
       <p className="st-note">
-        {COPY[metric].note(k)} The current month is left out until it's complete. To leave a practice out of everything
+        {COPY[metric].note(k)} “Signing month” = by the end of the month they signed, which shows onboarding
+        speed (practices should be live within 2–3 weeks). The current month is left out until it's complete. To leave a practice out of everything
         on this tab (a test site, or not a real customer), hover its signing month and click Exclude; everyone sees the change. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
         recalling with no Suvera Recall deal in HubSpot are grouped by the month of their first recall.
       </p>

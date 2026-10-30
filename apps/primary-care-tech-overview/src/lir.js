@@ -174,7 +174,9 @@ export function buildLir(lir, { need = DEFAULT_WEEKS, today, metric = "consisten
     const members = byCohort.get(month);
     const span = Math.min(MAX_TENURE, monthsBetween(month, lastFull));
     const cells = [];
-    for (let k = 1; k <= span; k++) {
+    // k = 0 is the signing month itself: practices should be live within 2–3 weeks,
+    // so signing on 1 Sep should already show by the end of Sep (onboarding speed)
+    for (let k = 0; k <= span; k++) {
       const m = addMonths(month, k);
       const w = lastMondayOf(m);
       if (usedWeeksAt(new Map(), w, firstWeek) == null) { cells.push({ k, month: m, noData: true }); continue; }

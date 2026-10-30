@@ -66,9 +66,12 @@ describe("lir (weekly usage)", () => {
     expect(r.lastWeek).toBe("2026-10-19");
     expect(r.cohorts.map((c) => [c.month, c.n])).toEqual([["2026-07", 2], ["2026-09", 0 + 1]]);
     const jul = r.cohorts[0].cells;
-    expect(jul[0]).toMatchObject({ k: 1, month: "2026-08", hit: 1, of: 2, pct: 50 }); // judged w/c 31 Aug
-    expect(jul[1]).toMatchObject({ k: 2, month: "2026-09", hit: 0, pct: 0 });
-    expect(jul.length).toBe(2); // never the in-progress month
+    expect(jul[0]).toMatchObject({ k: 0, month: "2026-07", noData: true }); // signing month, before the data
+    expect(jul[1]).toMatchObject({ k: 1, month: "2026-08", hit: 1, of: 2, pct: 50 }); // judged w/c 31 Aug
+    expect(jul[2]).toMatchObject({ k: 2, month: "2026-09", hit: 0, pct: 0 });
+    expect(jul.length).toBe(3); // never the in-progress month
+    // signed in Sep: its signing month (Sep) is already judged, Oct isn't
+    expect(r.cohorts[1].cells.map((c) => c.k)).toEqual([0]);
     expect(r.watch[0].ods).toBe("A"); // A: on track in Aug, nothing since -> stopped, listed first
     expect(r.watch[0].status).toBe("stopped");
     expect([r.onTrack, r.judged]).toEqual([1, 3]);
@@ -102,7 +105,7 @@ describe("lir (weekly usage)", () => {
       ],
     };
     const r = buildLir(lir, { today: "2026-10-28", metric: "bulk", bars: { bulk: 50 } });
-    expect(r.cohorts[0].cells[0]).toMatchObject({ month: "2026-08", hit: 1, of: 2, pct: 50 });
+    expect(r.cohorts[0].cells[1]).toMatchObject({ month: "2026-08", hit: 1, of: 2, pct: 50 });
     expect(r.cards.bulk).toMatchObject({ pass: 1, of: 2, all: 44 }); // 90 bulk of 205 patients
   });
 });
