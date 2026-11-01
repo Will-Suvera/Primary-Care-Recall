@@ -168,6 +168,15 @@ export default function App() {
         )}
       </aside>
 
+      {/* phones: the sidebar is hidden, so the tabs sit in a bar across the top */}
+      <nav className="su-mnav" aria-label="Sections">
+        <img src={LOGO} alt="Suvera" className="su-mnav-logo" />
+        {[["overview", "Overview"], ["onboarding", "Onboarding"], ["retention", "Retention"]].map(([t, label]) => (
+          <button key={t} className={"su-mnav-item" + (tab === t ? " active" : "")} onClick={() => selectTab(t)}>{label}</button>
+        ))}
+        <a className="su-mnav-item" href="/map/">Map</a>
+      </nav>
+
       <main className={"su-content" + (tab === "onboarding" ? " hub" : "")}>
         {!data ? (
           <div className="loading">Loading…</div>

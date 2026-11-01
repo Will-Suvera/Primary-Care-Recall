@@ -31,14 +31,26 @@ const STATUS_WHY = {
 function useTip() {
   const [tip, setTip] = useState(null);
   const on = (content) => ({
+    "data-tip": "",
     onMouseEnter: (e) => setTip({ content, x: e.clientX, y: e.clientY }),
     onMouseMove: (e) => setTip((t) => t && { ...t, x: e.clientX, y: e.clientY }),
     onMouseLeave: () => setTip(null),
     onClick: (e) => setTip((t) => (t?.content === content ? null : { content, x: e.clientX, y: e.clientY })),
   });
-  const flip = tip && typeof window !== "undefined" && tip.x > window.innerWidth - 300;
+  // a tap elsewhere or a scroll closes it (phones have no mouse-leave)
+  useEffect(() => {
+    if (!tip) return undefined;
+    const close = () => setTip(null);
+    const away = (e) => { if (!e.target.closest?.("[data-tip]")) close(); };
+    window.addEventListener("scroll", close, { passive: true, capture: true });
+    document.addEventListener("click", away);
+    return () => { window.removeEventListener("scroll", close, { capture: true }); document.removeEventListener("click", away); };
+  }, [tip]);
+  // keep it on screen: 8px gutter, at most 280px wide, below the pointer
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const w = Math.min(280, vw - 16);
   const el = tip && (
-    <div className="lir-tip" role="tooltip" style={{ top: tip.y + 16, ...(flip ? { right: window.innerWidth - tip.x + 8 } : { left: tip.x + 12 }) }}>
+    <div className="lir-tip" role="tooltip" style={{ top: tip.y + 16, left: Math.max(8, Math.min(tip.x + 12 > vw - w - 8 ? tip.x - w - 8 : tip.x + 12, vw - w - 8)), maxWidth: w }}>
       {tip.content}
     </div>
   );
@@ -449,7 +461,8 @@ export default function LirCohort({ lir, generatedAt, auth }) {
         Watchlist <span className="st-hint">{sort.key === "signal" && sort.dir === 1 ? "worst first · paying practices first within each group · " : ""}click a column to sort</span>
         <button className="ov-more" onClick={() => setShowAll((v) => !v)}>{showAll ? "Hide on-track" : `Show all ${r.watch.length}`}</button>
       </div>
-      <table className="st-table">
+      <div className="lir-scroll">
+      <table className="st-table lir-watch">
         <thead>
           <tr>
             <Th id="practice">Practice</Th><Th id="signal">Consistency</Th><Th id="bulk" num>Bulk</Th><Th id="sugg" num>Suggestions</Th>
@@ -547,6 +560,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
           ))}
         </tbody>
       </table>
+      </div>
       {tipEl}
       <p className="st-note">
         Hover or tap a week square, Consistency, Bulk, Suggestions, Users or Renews for details. Bulk and Suggestions are

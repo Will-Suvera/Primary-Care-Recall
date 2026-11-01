@@ -813,3 +813,53 @@ th.lir-sort:hover, th.lir-sort.on { color: var(--su-ink); }
 .lir-manage ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 16px; }
 .lir-manage label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .lir-struck { text-decoration: line-through; }
+
+/* ---------- phones (iPhone portrait ~375–440px, foldables/landscape up to 900px) ---------- */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.su-mnav { display: none; }
+@media (max-width: 900px) {
+  .su-app { flex-direction: column; }
+  .su-mnav {
+    display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 50;
+    padding: 8px 12px; background: var(--su-paper); border-bottom: 1px solid var(--su-line);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .su-mnav::-webkit-scrollbar { display: none; }
+  .su-mnav-logo { height: 20px; width: auto; margin-right: 8px; flex-shrink: 0; }
+  .su-mnav-item {
+    flex-shrink: 0; padding: 8px 11px; border-radius: var(--su-r-input); border: 0; background: none;
+    font: inherit; font-size: 14px; font-weight: 500; color: var(--su-muted); text-decoration: none; cursor: pointer;
+  }
+  .su-mnav-item.active { background: var(--su-surface); color: var(--su-brand); font-weight: 600; }
+}
+@media (max-width: 720px) {
+  .su-content { padding: 14px 12px 48px; }
+  .lir-card { padding: 16px 14px; }
+  .lir-card .ov-card-head { flex-direction: column; align-items: stretch; }
+  .lir-controls { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .lir-card .st-seg-btn { padding: 7px 12px; font-size: 13px; }
+  .lir-cards { gap: 8px; }
+  .lir-card-m { padding: 10px 14px; }
+  .lir-minor { flex-direction: column; gap: 4px; }
+  .lir-card .st-table { font-size: 12.5px; }
+  .lir-card .st-table td { padding: 8px 6px; }
+  .lir-excl-btn { padding: 4px 9px; font-size: 12px; }
+  .lir-count-btn { min-height: 34px; }
+  .lir-manage input[type="checkbox"] { width: 18px; height: 18px; }
+  .lir-manage label { padding: 4px 0; }
+  .lir-manage ul { grid-template-columns: 1fr; }
+  .lir-detail li { flex-direction: column; gap: 2px; padding: 4px 0; border-bottom: 1px solid var(--su-line); }
+  .lir-detail li:last-child { border-bottom: 0; }
+  /* wide tables scroll sideways with the first column pinned */
+  .lir-scroll { margin: 0 -14px; padding: 0 14px; overscroll-behavior-x: contain; }
+  .lir-scroll .st-table tbody tr:not(.lir-pcn-head):not(.lir-manage) td:first-child,
+  .lir-scroll .st-table thead tr:first-child th:first-child {
+    position: sticky; left: 0; z-index: 1; background: var(--su-card); box-shadow: 1px 0 0 var(--su-line);
+  }
+  .lir-watch td:first-child { min-width: 150px; max-width: 170px; }
+}
+/* touch screens: no hover-only effects */
+@media (hover: none) {
+  .lir-strip .lir-wk:hover { transform: none; outline: none; }
+  .lir-strip .lir-wk { width: 14px; height: 20px; }
+}
