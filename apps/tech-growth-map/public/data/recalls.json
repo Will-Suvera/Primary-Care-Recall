@@ -17,158 +17,7 @@
       "2026-09": 7449,
       "2026-10": 5195
     },
-    "practices_this_month": [
-      {
-        "name": "Wistaria Milford Surgeries",
-        "count": 1144,
-        "ods": "J82139"
-      },
-      {
-        "name": "Oaklands Medical Centre",
-        "count": 585,
-        "ods": "N81039"
-      },
-      {
-        "name": "Riverside Medical Practice",
-        "count": 355,
-        "ods": "H82089"
-      },
-      {
-        "name": "Salisbury Avenue Surgery",
-        "count": 332,
-        "ods": "F82647"
-      },
-      {
-        "name": "Summerfield Health Centre",
-        "count": 332,
-        "ods": "E82107"
-      },
-      {
-        "name": "Bevan Group Practice",
-        "count": 288,
-        "ods": "N81011"
-      },
-      {
-        "name": "Cape Hill Medical Centre",
-        "count": 284,
-        "ods": "M88006"
-      },
-      {
-        "name": "Voyager Family Health",
-        "count": 282,
-        "ods": "J82067"
-      },
-      {
-        "name": "Fakenham Medical Practice",
-        "count": 237,
-        "ods": "D82054"
-      },
-      {
-        "name": "Southborough Lane Surgery",
-        "count": 228,
-        "ods": "G84023"
-      },
-      {
-        "name": "Oakleigh Road Health Centre",
-        "count": 196,
-        "ods": "E83003"
-      },
-      {
-        "name": "Old Parsonage Surgery",
-        "count": 173,
-        "ods": "G82224"
-      },
-      {
-        "name": "Lodge Highfield Redbourn",
-        "count": 160,
-        "ods": "E82014"
-      },
-      {
-        "name": "Twyford Surgery",
-        "count": 138,
-        "ods": "J82116"
-      },
-      {
-        "name": "Maltings Surgery",
-        "count": 109,
-        "ods": "E82031"
-      },
-      {
-        "name": "Brunel Medical Centre",
-        "count": 106,
-        "ods": "E86030"
-      },
-      {
-        "name": "Alma Road Surgery",
-        "count": 103,
-        "ods": "J82074"
-      },
-      {
-        "name": "Priory View Medical Centre",
-        "count": 66,
-        "ods": "B86024"
-      },
-      {
-        "name": "Chet Valley Medical Practice",
-        "count": 23,
-        "ods": "D82006"
-      },
-      {
-        "name": "Rock Court Surgery",
-        "count": 21,
-        "ods": "N82058"
-      },
-      {
-        "name": "Chapelford Primary Care Centre",
-        "count": 11,
-        "ods": "Y04925"
-      },
-      {
-        "name": "Ashfields Primary Care Centre",
-        "count": 8,
-        "ods": "N81032"
-      },
-      {
-        "name": "168 Medical Group",
-        "count": 4,
-        "ods": "L81051"
-      },
-      {
-        "name": "The Pall Mall Surgery",
-        "count": 3,
-        "ods": "F81144"
-      },
-      {
-        "name": "West Barnes Surgery",
-        "count": 1,
-        "ods": "H85055"
-      },
-      {
-        "name": "Claremont Bank Surgery",
-        "count": 1,
-        "ods": "M82034"
-      },
-      {
-        "name": "Brook Medical Centre",
-        "count": 1,
-        "ods": "M83094"
-      },
-      {
-        "name": "Park Farm Medical Centre",
-        "count": 1,
-        "ods": "C81064"
-      },
-      {
-        "name": "Bramblys Grange Medical Practice",
-        "count": 1,
-        "ods": "J82058"
-      },
-      {
-        "name": "Palfrey Health Centre",
-        "count": 1,
-        "ods": "M91621"
-      }
-    ],
+    "practices_this_month": [],
     "fy_by_practice": {
       "B82026": {
         "fy_to_date": 1,
@@ -176,11 +25,11 @@
       },
       "B86024": {
         "fy_to_date": 268,
-        "this_month": 66
+        "this_month": 0
       },
       "C81064": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "C84660": {
         "fy_to_date": 84,
@@ -188,19 +37,19 @@
       },
       "D82006": {
         "fy_to_date": 23,
-        "this_month": 23
+        "this_month": 0
       },
       "D82054": {
         "fy_to_date": 279,
-        "this_month": 237
+        "this_month": 0
       },
       "E82014": {
         "fy_to_date": 392,
-        "this_month": 160
+        "this_month": 0
       },
       "E82031": {
         "fy_to_date": 1289,
-        "this_month": 109
+        "this_month": 0
       },
       "E82051": {
         "fy_to_date": 64,
@@ -208,11 +57,11 @@
       },
       "E82107": {
         "fy_to_date": 398,
-        "this_month": 332
+        "this_month": 0
       },
       "E83003": {
         "fy_to_date": 263,
-        "this_month": 196
+        "this_month": 0
       },
       "E84021": {
         "fy_to_date": 867,
@@ -232,15 +81,15 @@
       },
       "E86030": {
         "fy_to_date": 2943,
-        "this_month": 106
+        "this_month": 0
       },
       "F81144": {
         "fy_to_date": 3,
-        "this_month": 3
+        "this_month": 0
       },
       "F82647": {
         "fy_to_date": 334,
-        "this_month": 332
+        "this_month": 0
       },
       "F83005": {
         "fy_to_date": 1,
@@ -252,11 +101,11 @@
       },
       "G82224": {
         "fy_to_date": 588,
-        "this_month": 173
+        "this_month": 0
       },
       "G84023": {
         "fy_to_date": 1143,
-        "this_month": 228
+        "this_month": 0
       },
       "G84624": {
         "fy_to_date": 1,
@@ -268,15 +117,15 @@
       },
       "H82089": {
         "fy_to_date": 358,
-        "this_month": 355
+        "this_month": 0
       },
       "H85055": {
         "fy_to_date": 4,
-        "this_month": 1
+        "this_month": 0
       },
       "J82058": {
         "fy_to_date": 5,
-        "this_month": 1
+        "this_month": 0
       },
       "J82064": {
         "fy_to_date": 392,
@@ -284,19 +133,19 @@
       },
       "J82067": {
         "fy_to_date": 913,
-        "this_month": 282
+        "this_month": 0
       },
       "J82074": {
         "fy_to_date": 670,
-        "this_month": 103
+        "this_month": 0
       },
       "J82116": {
         "fy_to_date": 860,
-        "this_month": 138
+        "this_month": 0
       },
       "J82139": {
         "fy_to_date": 1808,
-        "this_month": 1144
+        "this_month": 0
       },
       "J82154": {
         "fy_to_date": 7,
@@ -316,15 +165,15 @@
       },
       "L81051": {
         "fy_to_date": 5,
-        "this_month": 4
+        "this_month": 0
       },
       "M82034": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "M83094": {
         "fy_to_date": 1,
-        "this_month": 1
+        "this_month": 0
       },
       "M85077": {
         "fy_to_date": 1,
@@ -332,7 +181,7 @@
       },
       "M88006": {
         "fy_to_date": 2993,
-        "this_month": 284
+        "this_month": 0
       },
       "M88015": {
         "fy_to_date": 1,
@@ -340,19 +189,19 @@
       },
       "M91621": {
         "fy_to_date": 2,
-        "this_month": 1
+        "this_month": 0
       },
       "N81011": {
         "fy_to_date": 289,
-        "this_month": 288
+        "this_month": 0
       },
       "N81032": {
         "fy_to_date": 9,
-        "this_month": 8
+        "this_month": 0
       },
       "N81039": {
         "fy_to_date": 855,
-        "this_month": 585
+        "this_month": 0
       },
       "N82024": {
         "fy_to_date": 1,
@@ -360,7 +209,7 @@
       },
       "N82058": {
         "fy_to_date": 21,
-        "this_month": 21
+        "this_month": 0
       },
       "P84038": {
         "fy_to_date": 2,
@@ -380,7 +229,7 @@
       },
       "Y04925": {
         "fy_to_date": 105,
-        "this_month": 11
+        "this_month": 0
       }
     },
     "by_ods_month": {
@@ -1637,38 +1486,7 @@
     }
   },
   "weekly_available": true,
-  "active_ods_this_month": [
-    "B86024",
-    "C81064",
-    "D82006",
-    "D82054",
-    "E82014",
-    "E82031",
-    "E82107",
-    "E83003",
-    "E86030",
-    "F81144",
-    "F82647",
-    "G82224",
-    "G84023",
-    "H82089",
-    "H85055",
-    "J82058",
-    "J82067",
-    "J82074",
-    "J82116",
-    "J82139",
-    "L81051",
-    "M82034",
-    "M83094",
-    "M88006",
-    "M91621",
-    "N81011",
-    "N81032",
-    "N81039",
-    "N82058",
-    "Y04925"
-  ],
+  "active_ods_this_month": [],
   "active_ods_recent": [
     "B82026",
     "B86024",
