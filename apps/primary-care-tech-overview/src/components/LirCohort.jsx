@@ -190,6 +190,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
       .catch(() => setExclErr("That change didn't save. Check your connection and try again."));
   };
   const [sel, setSel] = useState(null);
+  const [editing, setEditing] = useState(null); // signing month whose practice list is open
   const [showAll, setShowAll] = useState(false);
   const [tipOn, tipEl] = useTip();
   const today = (generatedAt || new Date().toISOString()).slice(0, 10);
@@ -197,7 +198,8 @@ export default function LirCohort({ lir, generatedAt, auth }) {
     const keep = (p) => (plan === "all" || (plan === "paid") === Boolean(p.paid)) && !excluded[p.ods];
     return buildLir(lir && { ...lir, practices: (lir.practices || []).filter(keep) }, { need: bars.consistency, bars, metric, today });
   }, [lir, bars, metric, today, plan, excluded]);
-  const left = (lir?.practices || []).filter((p) => excluded[p.ods]);
+  const left = (lir?.practices || []).filter((p) => excluded[p.ods] && (plan === "all" || (plan === "paid") === Boolean(p.paid)));
+  const leftIn = (month) => left.filter((p) => p.signed?.slice(0, 7) === month);
   const need = bars.consistency, k = bars[metric];
 
   if (!lir || r.empty) {
@@ -359,13 +361,22 @@ export default function LirCohort({ lir, generatedAt, auth }) {
             </tr>
           </thead>
           <tbody>
-            {r.cohorts.map((c) => (
-              <tr key={c.month}>
+            {r.cohorts.map((c) => {
+              const out = leftIn(c.month), open = editing === c.month;
+              return <React.Fragment key={c.month}>
+              <tr>
                 <td className={"lir-rowh" + (sel?.cohort.month === c.month && !sel.cell ? " sel" : "")}
                   onMouseEnter={() => setSel({ cohort: c })} onClick={() => setSel({ cohort: c })}>
                   <b>{fmtMonth(c.month)}</b>
                 </td>
-                <td className="num su-num">{c.n}</td>
+                <td className="num">
+                  <button className={"lir-count-btn" + (open ? " on" : "")} aria-expanded={open}
+                    title="Choose which practices count in this month (e.g. leave out a test site)"
+                    onClick={() => setEditing(open ? null : c.month)}>
+                    <span className="su-num">{c.n}</span>{out.length > 0 && <span className="lir-count-out">+{out.length} out</span>}
+                    <span className="lir-count-ic">{open ? "▴" : "✎"}</span>
+                  </button>
+                </td>
                 {c.cells.length === 0 && <td colSpan={cols.length} className="st-faint lir-toonew">signed too recently to judge</td>}
                 {c.cells.length > 0 && cols.map((col) => {
                   const cell = c.cells[col];
@@ -385,7 +396,31 @@ export default function LirCohort({ lir, generatedAt, auth }) {
                   );
                 })}
               </tr>
-            ))}
+              {open && (
+                <tr className="lir-manage">
+                  <td colSpan={2 + cols.length}>
+                    <div className="lir-manage-h">
+                      <b>Who counts in {fmtMonth(c.month)}</b> <span className="st-faint">· untick a practice to leave it out of the cohorts, cards and watchlist (everyone sees this)</span>
+                      <button className="ov-more" onClick={() => setEditing(null)}>Done</button>
+                    </div>
+                    <ul>
+                      {[...c.members, ...out].sort((a, b) => a.name.localeCompare(b.name)).map((p) => {
+                        const on = !excluded[p.ods];
+                        return (
+                          <li key={p.ods}>
+                            <label className={on ? "" : "st-faint"}>
+                              <input type="checkbox" checked={on} onChange={() => setExcl(p.ods, on)} />
+                              <span className={on ? "" : "lir-struck"}>{p.name}</span> <PaidChip p={p} />
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>;
+            })}
           </tbody>
         </table>
       </div>
@@ -406,7 +441,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
       <p className="st-note">
         {COPY[metric].note(k)} “Signing month” = by the end of the month they signed, which shows onboarding
         speed (practices should be live within 2–3 weeks). The current month is left out until it's complete. To leave a practice out of everything
-        on this tab (a test site, or not a real customer), hover its signing month and click Exclude; everyone sees the change. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
+        on this tab (a test site, or not a real customer), click the count in “Practices signed” and untick it; everyone sees the change. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
         recalling with no Suvera Recall deal in HubSpot are grouped by the month of their first recall.
       </p>
 
