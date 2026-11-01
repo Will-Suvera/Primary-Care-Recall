@@ -817,7 +817,10 @@ th.lir-sort:hover, th.lir-sort.on { color: var(--su-ink); }
 /* ---------- phones (iPhone portrait ~375–440px, foldables/landscape up to 900px) ---------- */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .su-mnav { display: none; }
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
+  /* phones, foldables opened out and small tablets: top tab bar instead of the sidebar */
+  .su-sidebar { display: none; }
+  .su-content { padding: 20px 18px 56px; }
   .su-app { flex-direction: column; }
   .su-mnav {
     display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 50;
@@ -863,3 +866,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .lir-strip .lir-wk:hover { transform: none; outline: none; }
   .lir-strip .lir-wk { width: 14px; height: 20px; }
 }
+
+/* watchlist: keep rows short - a wider name column and pills on one line */
+.lir-watch td:first-child { min-width: 180px; }
+.lir-watch .su-status { white-space: nowrap; }
+.lir-watch td.num { white-space: nowrap; }
+@media (max-width: 720px) { .lir-watch td:first-child { min-width: 150px; } }
