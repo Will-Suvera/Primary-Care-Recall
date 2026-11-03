@@ -61,7 +61,11 @@
 
   .status { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
   .status.warn { background: var(--su-warn-bg); color: var(--su-warn); border-color: var(--su-warn-line); }
-  #queuePill { margin: 0 0 10px; cursor: pointer; }
+  .status.good { background: var(--su-good-bg); color: var(--su-good); border-color: var(--su-good-line); }
+  .status.bad  { background: var(--su-bad-bg);  color: var(--su-bad);  border-color: var(--su-bad-line); }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  #syncStatus { margin: 0 0 10px; cursor: pointer; text-align: left; line-height: 1.35; padding: 6px 12px; font-size: 12.5px; }
+  #storageWarn { display: block; margin: 0 0 10px; border-radius: var(--su-r-input); padding: 8px 12px; font-size: 12.5px; }
   .hint { margin: 2px 2px 10px; }
 
   /* Guest rows: white card, hairline, no shadow */
@@ -95,7 +99,8 @@
   .note .meta b { color: var(--su-ink); font-weight: 600; }
   .note .tags { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 6px; }
   .note .body { white-space: pre-wrap; word-wrap: break-word; color: var(--su-text); }
-  .note.pending { border-style: dashed; }
+  .note.pending { border-style: dashed; border-color: var(--su-warn-line); }
+  .note .unsent { color: var(--su-warn); font-weight: 600; }
 
   textarea { min-height: 128px; resize: vertical; line-height: 1.5; font-weight: 400; color: var(--su-text); }
   .tagbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
@@ -136,6 +141,8 @@
     opacity: 0; transition: .2s ease; pointer-events: none; z-index: 20; white-space: nowrap;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.good { background: var(--su-good-bg); color: var(--su-good); border-color: var(--su-good-line); }
+  .toast.warn { background: var(--su-warn-bg); color: var(--su-warn); border-color: var(--su-warn-line); white-space: normal; width: max-content; max-width: calc(100vw - 32px); text-align: center; }
   .loading { text-align: center; color: var(--su-muted); padding: 80px 0; }
   .loading .logo { width: 110px; height: 26px; margin: 0 auto 16px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -169,7 +176,8 @@
     <div class="search">
       <input id="q" type="search" placeholder="Search name or practice" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
     </div>
-    <button id="queuePill" class="status warn" hidden></button>
+    <div id="storageWarn" class="status bad" hidden>This browser won't keep notes if the page is closed (private browsing?). Wait for "Saved to sheet" after each note.</div>
+    <button id="syncStatus" class="status" hidden></button>
     <p id="hint" class="hint eyebrow num"></p>
     <div id="results" class="list"></div>
     <button id="addNew" class="add">+ Add someone not on the list</button>
@@ -242,12 +250,13 @@
     return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + t;
   }
   var toastTimer;
-  function toast(msg) {
+  // tone: '' | 'good' | 'warn'. ms = 0 keeps it up until the next toast.
+  function toast(msg, tone, ms) {
     var el = $('toast');
     el.textContent = msg;
-    el.classList.add('show');
+    el.className = 'toast show' + (tone ? ' ' + tone : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+    if (ms !== 0) toastTimer = setTimeout(function () { el.classList.remove('show'); }, ms || 2200);
   }
   function show(id) {
     ['loading', 'setup', 'home', 'person'].forEach(function (s) { $(s).hidden = s !== id; });
@@ -265,8 +274,10 @@
     current: null,                   // guest being viewed (null + walkin flag for new)
     isNew: false,
     tags: [],
-    flushing: false
+    flushing: false,
+    lastSync: 0          // last time the sheet answered us
   };
+  var storageOk = (function () { try { localStorage.setItem('sen:t', '1'); localStorage.removeItem('sen:t'); return true; } catch (e) { return false; } })();
 
   /* ---------- data ---------- */
   function indexGuest(g) {
@@ -310,7 +321,9 @@
     return call('getData', S.pin).then(function (d) {
       S.guests = d.guests.map(indexGuest);
       S.notes = d.notes;
+      S.lastSync = Date.now();
       store.set('cache', { guests: d.guests, notes: d.notes });
+      renderSyncStatus();
       if (!$('home').hidden) renderResults();
       if (!$('person').hidden && S.current && !S.isNew) renderTeamNotes();
     }).catch(function (e) {
@@ -319,43 +332,82 @@
   }
 
   /* ---------- offline-safe save queue ---------- */
-  function persistQueue() { store.set('queue', S.queue); renderQueuePill(); }
+  function persistQueue() { store.set('queue', S.queue); renderSyncStatus(); }
 
-  function flush() {
-    if (S.flushing || !S.queue.length) return Promise.resolve();
+  // Sends every unsent note, oldest first. A note leaves the queue only once
+  // the sheet has replied that the row is written. `loud` = the person is
+  // waiting on this (they just tapped Save or Retry), so tell them how it went.
+  function flush(loud) {
+    if (S.flushing) { S.flushLoud = S.flushLoud || loud; return S.flushPromise; }
+    if (!S.queue.length) return Promise.resolve();
     S.flushing = true;
+    S.flushLoud = !!loud;
+    renderSyncStatus();
     var items = S.queue.slice();
     var chain = Promise.resolve();
-    var pinBad = false;
+    var pinBad = false, sent = 0, failed = 0;
     items.forEach(function (item) {
       chain = chain.then(function () {
         if (pinBad) return;
         return call('saveNote', S.pin, item).then(function () {
+          sent++;
+          S.lastSync = Date.now();
           S.queue = S.queue.filter(function (q) { return q.entryId !== item.entryId; });
+          // Count it as confirmed straight away; the next refresh replaces this.
+          S.notes = S.notes.concat([{ ts: item.clientTs, team: item.team, name: item.name, email: item.email,
+            practice: item.practice, role: item.role, tags: item.tags.join(', '), note: item.note,
+            key: item.key, entryId: item.entryId }]);
           persistQueue();
         }).catch(function (e) {
+          failed++;
           if (errMsg(e).indexOf('PIN_INVALID') !== -1) pinBad = true;
           // Anything else (no signal, timeout): keep it and retry later.
         });
       });
     });
-    return chain.then(function () {
+    S.flushPromise = chain.then(function () {
+      var loudNow = S.flushLoud;
       S.flushing = false;
-      if (pinBad) { store.del('pin'); S.pin = ''; renderSetup('PIN changed. Enter the new team PIN. Your notes are kept.'); return; }
+      S.flushLoud = false;
+      if (pinBad) { store.del('pin'); S.pin = ''; renderSetup('PIN changed. Enter the new team PIN. Your unsent notes are kept on this phone.'); return; }
+      if (sent && !failed) toast(sent === 1 ? 'Saved to sheet' : sent + ' notes saved to sheet', 'good');
+      else if (sent && failed) toast(sent + ' saved to sheet, ' + failed + ' not sent yet. Will retry.', 'warn', 4000);
+      else if (failed && loudNow) toast('Not sent yet: no signal. Kept on this phone, will retry automatically.', 'warn', 4500);
+      renderSyncStatus();
+      if (!$('home').hidden) renderResults();
+      if (!$('person').hidden && S.current && !S.isNew) renderTeamNotes();
       var tried = {};
       items.forEach(function (i) { tried[i.entryId] = 1; });
       // A note saved while we were sending: send it now rather than in 30s.
-      if (S.queue.some(function (q) { return !tried[q.entryId]; })) return flush();
+      if (S.queue.some(function (q) { return !tried[q.entryId]; })) return flush(loudNow);
       return refresh();
     });
+    return S.flushPromise;
   }
 
   function sync() { return S.queue.length ? flush() : refresh(); }
 
-  function renderQueuePill() {
-    var n = S.queue.length, el = $('queuePill');
-    el.hidden = !n;
-    el.textContent = (n === 1 ? '1 note' : n + ' notes') + ' waiting for signal · tap to retry';
+  // The always-visible answer to "did my notes go in?"
+  function renderSyncStatus() {
+    var el = $('syncStatus');
+    var n = S.queue.length;
+    var mine = S.notes.filter(function (x) { return x.team === S.me; }).length;
+    $('storageWarn').hidden = storageOk;
+    if (n) {
+      el.className = 'status warn';
+      el.innerHTML = '<span class="dot"></span><span>' + (S.flushing
+        ? 'Sending ' + (n === 1 ? '1 note' : n + ' notes') + '…'
+        : (n === 1 ? '1 note' : n + ' notes') + ' NOT sent yet · kept on this phone · tap to retry') + '</span>';
+      el.hidden = false;
+    } else if (mine) {
+      el.className = 'status good';
+      el.innerHTML = '<span class="dot"></span><span class="num">' +
+        (mine === 1 ? 'Your 1 note is in the sheet' : 'All ' + mine + ' of your notes are in the sheet') +
+        (S.lastSync ? ' · checked ' + esc(fmtTime(S.lastSync)) : '') + '</span>';
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
   }
 
   /* ---------- setup screen ---------- */
@@ -405,7 +457,7 @@
     show('home');
     $('eventName').textContent = (S.config && S.config.eventName) || 'Event notes';
     $('meName').textContent = S.me;
-    renderQueuePill();
+    renderSyncStatus();
     renderResults();
   }
 
@@ -481,7 +533,10 @@
   });
   $('addNew').addEventListener('click', function () { openPerson(null, true); });
   $('changeMe').addEventListener('click', function () { renderSetup(); });
-  $('queuePill').addEventListener('click', function () { flush(); toast('Retrying…'); });
+  $('syncStatus').addEventListener('click', function () {
+    if (S.queue.length) { toast('Sending…', '', 0); flush(true); }
+    else { toast('Checking…', '', 0); refresh().then(function () { toast(S.lastSync && Date.now() - S.lastSync < 5000 ? 'Up to date' : 'No signal right now', S.lastSync && Date.now() - S.lastSync < 5000 ? 'good' : 'warn'); }); }
+  });
 
   /* ---------- person / note ---------- */
   function draftKey() { return 'draft:' + (S.isNew ? '__new__' : S.current.key); }
@@ -522,7 +577,7 @@
     $('teamNotesTitle').textContent = 'Already spoken to · ' + list.length;
     $('teamNotes').innerHTML = list.map(function (n) {
       return '<div class="note' + (n.pending ? ' pending' : '') + '"><div class="meta"><b>' + esc(n.team) + '</b> · ' +
-        esc(fmtTime(n.ts)) + (n.pending ? ' · sending…' : '') + '</div>' +
+        esc(fmtTime(n.ts)) + (n.pending ? ' · <span class="unsent">not sent yet</span>' : '') + '</div>' +
         (n.tags ? '<div class="tags">' + n.tags.split(/,\s*/).filter(Boolean).map(function (t) { return '<span class="chip brand">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
         (n.note ? '<div class="body">' + esc(n.note) + '</div>' : '') + '</div>';
     }).join('');
@@ -580,8 +635,8 @@
     store.del(draftKey());
     $('q').value = '';
     goHome();
-    toast('Saved');
-    flush();
+    toast('Sending…', '', 0);
+    flush(true);
   });
 
   /* ---------- background sync ---------- */

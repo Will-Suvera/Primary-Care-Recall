@@ -13,8 +13,15 @@ the guest-list Google Sheet.
   of typing.
 - **Walk-ins:** "+ Add someone not on the list" uses the name you've typed.
   The new person is then searchable for the rest of the team.
-- **Bad signal is fine.** Notes are kept on the phone and sent automatically
-  when signal returns, even after the app is closed. They are never sent twice.
+- **You know it's in.** After you tap Save, the phone says *Sending…*. It
+  only shows a green **Saved to sheet** once the sheet has replied that the
+  row is written. The home screen always shows a status line:
+  - green: *All 5 of your notes are in the sheet · checked 17:41*
+  - amber: *1 note NOT sent yet · kept on this phone · tap to retry*
+- **Bad signal is fine.** Unsent notes stay on the phone, labelled *not sent
+  yet*, and go automatically when signal returns, even after the app is
+  closed. They are never sent twice. In private browsing the phone can't
+  keep them, and a red banner says so.
 - **Drafts survive.** If you leave half-way through a note, it's still there
   when you come back.
 
@@ -31,8 +38,11 @@ It writes to a **Notes** tab, which it creates on the first save:
 |---|---|---|---|---|---|---|---|---|
 
 It writes one row per conversation and only ever adds rows, so team members
-saving at the same moment can't overwrite each other. Two hidden plumbing
-columns (Guest key, Entry ID) handle de-duplication. Rows added to **Guests**
+saving at the same moment can't overwrite each other. Saves take turns behind
+a lock, and each holds it only for the quick append. If a save ever times out
+waiting, the phone keeps the note and retries. The hidden Entry ID column
+stops a retry from writing the note twice. (Tested: 12 people saving on the
+same guest at once gives 12 rows, and a repeated retry adds nothing.) Rows added to **Guests**
 during the event show up in the app within 30 seconds.
 
 There is also a **By guest** tab for follow-up: one row per guest with every
@@ -48,9 +58,9 @@ itself, because it gets overwritten; edit Notes instead.
 1. Open the guest-list sheet → **Extensions → Apps Script**.
 2. Replace everything in `Code.gs` with [`Code.gs`](Code.gs).
 3. **＋ → HTML**, name it `Index` (exactly), and paste [`Index.html`](Index.html).
-4. `CONFIG.TEAM` at the top of `Code.gs` already lists the team (Will,
-   Ellena, Caitlin, Ram, CJ, Camilla, Ryzard, Roland, Aleena, Ben, Ryan).
-   People tap their name once. Add or remove names there.
+4. `CONFIG.TEAM` at the top of `Code.gs` already lists the team (Aleena,
+   Ben, Caitlin, Camilla, CJ, Ellena, Ivan, Ram, Roland, Ryan, Ryzard, Will).
+   People tap their name once. Add or remove names there; they always show A-Z.
 5. *(Recommended)* Set a team PIN: **Project Settings (⚙) → Script properties →
    Add**. Property `ACCESS_PIN`, value e.g. `2468`. Anyone without the PIN
    can't see the guest list or write notes. The PIN is kept out of the code, so
@@ -81,5 +91,7 @@ This keeps the same URL, so nobody needs a new link. Changes to `CONFIG`
 - The keyboard's microphone button works in the note box. Dictating is
   faster than typing between conversations.
 - Press **Go/Enter** in the search box to open the top match.
-- An amber "⏳ waiting for signal" pill means notes are safe on the phone and
-  haven't reached the sheet yet. Tap it to retry.
+- **Only trust green.** Before you pocket your phone, glance at the status
+  line. Amber means a note is still on your phone: keep the app open, or tap
+  to retry when you have signal. The team can check the **By guest** tab on a
+  laptop too.

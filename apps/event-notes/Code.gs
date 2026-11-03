@@ -27,7 +27,8 @@ const CONFIG = {
   BY_GUEST_SHEET: 'By guest',
   // Team names shown as tap-to-pick buttons on first launch.
   // Leave empty to let people type their own name.
-  TEAM: ['Will', 'Ellena', 'Caitlin', 'Ram', 'CJ', 'Camilla', 'Ryzard', 'Roland', 'Aleena', 'Ben', 'Ryan'],
+  // (shown A-Z whatever order they're typed in here)
+  TEAM: ['Aleena', 'Ben', 'Caitlin', 'Camilla', 'CJ', 'Ellena', 'Ivan', 'Ram', 'Roland', 'Ryan', 'Ryzard', 'Will'],
   // One-tap tags shown under the note box. Edit freely.
   QUICK_TAGS: ['Wants a demo', 'Follow up', 'Hot lead', 'Send info', 'Existing customer'],
 };
@@ -62,7 +63,9 @@ function doGet() {
 function getConfig() {
   return {
     eventName: CONFIG.EVENT_NAME,
-    team: CONFIG.TEAM,
+    team: CONFIG.TEAM.slice().sort(function (a, b) {
+      return a.localeCompare(b, 'en', { sensitivity: 'base' });
+    }),
     quickTags: CONFIG.QUICK_TAGS,
     pinRequired: Boolean(getPin_()),
   };
@@ -113,32 +116,64 @@ function saveNote(pin, p) {
   const clientTs = Number(p.clientTs);
   if (clientTs && Math.abs(Date.now() - clientTs) < 48 * 3600 * 1000) ts = new Date(clientTs);
 
+  // Many phones can save at once. Each save waits its turn for this lock, and
+  // holds it only for the quick append, so nobody's row is lost or
+  // overwritten. If the wait ever times out, the phone keeps the note and
+  // retries, and entryId stops a retry from writing it twice.
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
+  let duplicate = false;
   try {
     const sheet = ensureNotesSheet_(SpreadsheetApp.getActiveSpreadsheet());
     const last = sheet.getLastRow();
     if (last > 1) {
       const ids = sheet.getRange(2, NOTES_HEADERS.length, last - 1, 1).getValues();
       for (let i = 0; i < ids.length; i++) {
-        if (String(ids[i][0]) === entryId) return { ok: true, duplicate: true };
+        if (String(ids[i][0]) === entryId) { duplicate = true; break; }
       }
     }
-    sheet.appendRow([
-      ts, team, name, email, clean_(p.practice, 200), clean_(p.role, 200),
-      tags.join(', '), note, p.walkin ? 'Yes' : '', key, entryId,
-    ].map(safeCell_));
-    SpreadsheetApp.flush();
-    try {
-      rebuildByGuest_(SpreadsheetApp.getActiveSpreadsheet());
-    } catch (err) {
-      // The note is already saved; a failed summary must not make the phone retry.
-      console.error('By guest rebuild failed: ' + err);
+    if (!duplicate) {
+      sheet.appendRow([
+        ts, team, name, email, clean_(p.practice, 200), clean_(p.role, 200),
+        tags.join(', '), note, p.walkin ? 'Yes' : '', key, entryId,
+      ].map(safeCell_));
+      SpreadsheetApp.flush();
     }
   } finally {
     lock.releaseLock();
   }
-  return { ok: true };
+  // The note is in the sheet at this point. The summary tab is refreshed
+  // outside the save lock so it never holds up anyone else's save, and a
+  // failure there must not make the phone think the note wasn't saved.
+  try {
+    requestByGuestRebuild_(SpreadsheetApp.getActiveSpreadsheet());
+  } catch (err) {
+    console.error('By guest rebuild failed: ' + err);
+  }
+  return { ok: true, duplicate: duplicate, savedAt: Date.now() };
+}
+
+/**
+ * Rebuild "By guest" without making simultaneous saves queue up behind it.
+ * Each save marks the tab out of date. Only one rebuild runs at a time; it
+ * goes round again if more notes arrived while it was running. Saves that
+ * find a rebuild already running return straight away, because that rebuild
+ * will include their note.
+ */
+function requestByGuestRebuild_(ss) {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('BY_GUEST_DIRTY', Utilities.getUuid());
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(100)) return;
+  try {
+    for (let i = 0; i < 5; i++) {
+      const mark = props.getProperty('BY_GUEST_DIRTY');
+      rebuildByGuest_(ss);
+      if (props.getProperty('BY_GUEST_DIRTY') === mark) break;
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ------------------------------------------------------------------ */
