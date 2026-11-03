@@ -9,8 +9,11 @@
  *
  * Reads:  the "Guests" tab (Full name | Email | Practice / organisation | Role)
  * Writes: the "Notes" tab (created automatically on first save), one row per
- *         conversation. It only ever appends, so 7 people saving at the same
+ *         conversation. It only ever appends, so the team saving at the same
  *         moment can't overwrite each other.
+ *         The "By guest" tab: one row per guest with every note combined,
+ *         rebuilt after each save (and when Notes is edited by hand), for
+ *         follow-up after the event.
  *
  * Optional PIN: Project Settings → Script properties → add ACCESS_PIN.
  * Leave it unset for no PIN. It is kept out of this file on purpose, so the
@@ -21,12 +24,18 @@ const CONFIG = {
   EVENT_NAME: 'Proactive by Default',
   GUESTS_SHEET: 'Guests',
   NOTES_SHEET: 'Notes',
+  BY_GUEST_SHEET: 'By guest',
   // Team names shown as tap-to-pick buttons on first launch.
   // Leave empty to let people type their own name.
-  TEAM: [],
+  TEAM: ['Will', 'Ellena', 'Caitlin', 'Ram', 'CJ', 'Camilla', 'Ryzard', 'Roland', 'Aleena', 'Ben', 'Ryan'],
   // One-tap tags shown under the note box. Edit freely.
   QUICK_TAGS: ['Wants a demo', 'Follow up', 'Hot lead', 'Send info', 'Existing customer'],
 };
+
+const BY_GUEST_HEADERS = [
+  'Full name', 'Practice / organisation', 'Role', 'Email', 'Conversations',
+  'Spoken to by', 'Tags', 'Last spoken', 'All notes (newest first)', 'Walk-in',
+];
 
 const NOTES_HEADERS = [
   'Timestamp', 'Team member', 'Full name', 'Email', 'Practice / organisation',
@@ -120,10 +129,121 @@ function saveNote(pin, p) {
       tags.join(', '), note, p.walkin ? 'Yes' : '', key, entryId,
     ].map(safeCell_));
     SpreadsheetApp.flush();
+    try {
+      rebuildByGuest_(SpreadsheetApp.getActiveSpreadsheet());
+    } catch (err) {
+      // The note is already saved; a failed summary must not make the phone retry.
+      console.error('By guest rebuild failed: ' + err);
+    }
   } finally {
     lock.releaseLock();
   }
   return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* "By guest" follow-up tab                                             */
+/* ------------------------------------------------------------------ */
+
+/** Sheet menu, so the summary can be refreshed by hand. */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Event notes')
+    .addItem('Rebuild "By guest" tab', 'rebuildByGuest')
+    .addToUi();
+}
+
+/** Keep "By guest" in step when someone fixes a typo in Notes or Guests. */
+function onEdit(e) {
+  const name = e && e.range && e.range.getSheet().getName();
+  if (name === CONFIG.NOTES_SHEET || name === CONFIG.GUESTS_SHEET) {
+    rebuildByGuest_(e.source);
+  }
+}
+
+function rebuildByGuest() {
+  rebuildByGuest_(SpreadsheetApp.getActiveSpreadsheet());
+}
+
+/**
+ * One row per guest: everyone on the Guests tab plus walk-ins. People with
+ * notes are listed first (most conversations, then most recent), then the
+ * rest alphabetically, so the bottom of the tab is who nobody reached.
+ */
+function rebuildByGuest_(ss) {
+  const tz = ss.getSpreadsheetTimeZone();
+  const guests = readGuests_(ss);
+  const notes = readNotes_(ss);
+  const byKey = {};
+  const order = [];
+  guests.forEach(function (g) { byKey[g.key] = { g: g, notes: [] }; order.push(g.key); });
+  notes.forEach(function (n) {
+    if (!byKey[n.key]) {
+      byKey[n.key] = { g: { name: n.name, email: n.email, practice: n.practice, role: n.role, walkin: true }, notes: [] };
+      order.push(n.key);
+    }
+    byKey[n.key].notes.push(n);
+  });
+
+  const rows = order.map(function (k) {
+    const entry = byKey[k];
+    const g = entry.g;
+    const ns = entry.notes.slice().sort(function (a, b) { return b.ts - a.ts; });
+    const team = unique_(ns.map(function (n) { return n.team; }).reverse());
+    const tags = unique_([].concat.apply([], ns.map(function (n) {
+      return String(n.tags || '').split(/,\s*/);
+    })));
+    const text = ns.map(function (n) {
+      const when = n.ts ? Utilities.formatDate(new Date(n.ts), tz, 'HH:mm') : '';
+      return when + ' ' + n.team + ': ' + (n.tags ? '[' + n.tags + '] ' : '') + n.note;
+    }).join('\n');
+    return {
+      count: ns.length,
+      last: ns.length ? ns[0].ts : 0,
+      cells: [
+        g.name, g.practice, g.role, g.email, ns.length,
+        team.join(', '), tags.join(', '), ns.length && ns[0].ts ? new Date(ns[0].ts) : '',
+        text, g.walkin ? 'Yes' : '',
+      ].map(safeCell_),
+    };
+  });
+  rows.sort(function (a, b) {
+    if (!!a.count !== !!b.count) return a.count ? -1 : 1;
+    if (a.count !== b.count) return b.count - a.count;
+    if (a.last !== b.last) return b.last - a.last;
+    return String(a.cells[0]).localeCompare(String(b.cells[0]));
+  });
+
+  let sheet = ss.getSheetByName(CONFIG.BY_GUEST_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.BY_GUEST_SHEET);
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 170);
+    sheet.setColumnWidth(2, 220);
+    sheet.setColumnWidth(3, 160);
+    sheet.setColumnWidth(4, 200);
+    sheet.setColumnWidth(5, 100);
+    sheet.setColumnWidth(6, 150);
+    sheet.setColumnWidth(7, 180);
+    sheet.setColumnWidth(8, 110);
+    sheet.setColumnWidth(9, 520);
+  }
+  sheet.clearContents();
+  const values = [BY_GUEST_HEADERS].concat(rows.map(function (r) { return r.cells; }));
+  sheet.getRange(1, 1, values.length, BY_GUEST_HEADERS.length).setValues(values);
+  sheet.getRange(1, 1, 1, BY_GUEST_HEADERS.length).setFontWeight('bold');
+  sheet.getRange(2, 8, Math.max(values.length - 1, 1), 1).setNumberFormat('ddd d mmm hh:mm');
+  sheet.getRange(2, 9, Math.max(values.length - 1, 1), 1).setWrap(true);
+  sheet.getRange(2, 1, Math.max(values.length - 1, 1), BY_GUEST_HEADERS.length).setVerticalAlignment('top');
+}
+
+function unique_(arr) {
+  const seen = {};
+  return arr.filter(function (x) {
+    x = String(x || '').trim();
+    if (!x || seen[x]) return false;
+    seen[x] = 1;
+    return true;
+  }).map(function (x) { return String(x).trim(); });
 }
 
 /* ------------------------------------------------------------------ */

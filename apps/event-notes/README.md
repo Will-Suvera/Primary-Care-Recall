@@ -19,7 +19,8 @@ the guest-list Google Sheet.
   when you come back.
 
 No hosting, no API keys. It's a Google Apps Script web app attached to the
-sheet itself.
+sheet itself. It is styled with **Suvera Flow**, the same design tokens as
+ops.suvera.com (`docs/design/suvera-flow.md`).
 
 ## Where the data goes
 
@@ -34,14 +35,22 @@ saving at the same moment can't overwrite each other. Two hidden plumbing
 columns (Guest key, Entry ID) handle de-duplication. Rows added to **Guests**
 during the event show up in the app within 30 seconds.
 
+There is also a **By guest** tab for follow-up: one row per guest with every
+note combined (`Full name | Practice | Role | Email | Conversations | Spoken to by | Tags | Last spoken | All notes (newest first) | Walk-in`).
+Guests someone spoke to come first, sorted by most conversations. Everyone
+nobody reached is listed below them. The tab rebuilds after every save and
+whenever Notes or Guests is edited by hand. To rebuild it manually, use the
+sheet menu **Event notes → Rebuild "By guest" tab**. Don't edit By guest
+itself, because it gets overwritten; edit Notes instead.
+
 ## Set up (about 5 minutes, once)
 
 1. Open the guest-list sheet → **Extensions → Apps Script**.
 2. Replace everything in `Code.gs` with [`Code.gs`](Code.gs).
 3. **＋ → HTML**, name it `Index` (exactly), and paste [`Index.html`](Index.html).
-4. *(Optional)* In `CONFIG` at the top of `Code.gs`, fill in `TEAM` with the
-   7 names, e.g. `TEAM: ['Will', 'Sam', …]`. People then tap their name
-   instead of typing it, which keeps the names consistent in the sheet.
+4. `CONFIG.TEAM` at the top of `Code.gs` already lists the team (Will,
+   Ellena, Caitlin, Ram, CJ, Camilla, Ryzard, Roland, Aleena, Ben, Ryan).
+   People tap their name once. Add or remove names there.
 5. *(Recommended)* Set a team PIN: **Project Settings (⚙) → Script properties →
    Add**. Property `ACCESS_PIN`, value e.g. `2468`. Anyone without the PIN
    can't see the guest list or write notes. The PIN is kept out of the code, so
