@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Suvera Event Notes</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #14171c; --muted: #636b78;
+    --line: #e2e5ea; --accent: #0f6e6a; --accent-ink: #ffffff; --accent-soft: #e3f1f0;
+    --warn: #a15c00; --warn-soft: #fff3df; --danger: #b42318; --ok: #157347;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --card: #181c22; --text: #eef1f5; --muted: #9aa3af;
+      --line: #2a3039; --accent: #3fb8b0; --accent-ink: #062120; --accent-soft: #15302f;
+      --warn: #f0b45a; --warn-soft: #2e2413; --danger: #ff6b5e; --ok: #4cc38a;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px 40px; }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 0 10px; }
+  .event { font-weight: 700; font-size: 18px; }
+  .me { font-size: 14px; color: var(--muted); background: none; border: 0; padding: 6px 0 6px 8px; }
+  .me b { color: var(--text); font-weight: 600; }
+
+  .search {
+    position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 4px 0 10px;
+  }
+  input, textarea {
+    width: 100%; font: inherit; font-size: 17px; color: var(--text); background: var(--card);
+    border: 1.5px solid var(--line); border-radius: var(--radius); padding: 14px 16px; outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  #q { font-size: 18px; padding: 15px 16px; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 10px;
+    border-radius: 999px; background: var(--warn-soft); color: var(--warn); margin: 0 0 10px; border: 0;
+  }
+  .hint { color: var(--muted); font-size: 14px; margin: 4px 2px 10px; }
+
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 14px;
+  }
+  .row:active { transform: scale(.99); background: var(--accent-soft); }
+  .row .main { flex: 1; min-width: 0; }
+  .row .name { font-weight: 600; }
+  .row .sub { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge {
+    flex: none; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .badge.walkin { background: var(--warn-soft); color: var(--warn); }
+  mark { background: none; color: var(--accent); font-weight: 700; }
+
+  .add {
+    margin-top: 12px; width: 100%; padding: 14px; border-radius: var(--radius);
+    border: 1.5px dashed var(--line); background: none; color: var(--accent); font-weight: 600;
+  }
+
+  .back { background: none; border: 0; color: var(--accent); padding: 14px 0 6px; font-weight: 600; font-size: 16px; }
+  .person h1 { font-size: 26px; line-height: 1.2; margin: 6px 0 4px; }
+  .person .org { font-size: 16px; color: var(--muted); }
+  .person .email { font-size: 14px; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .fields { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 2px 8px; }
+  .note { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; }
+  .note .meta { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .note .meta b { color: var(--text); }
+  .note .tags { font-size: 13px; color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+  .note .body { white-space: pre-wrap; word-wrap: break-word; }
+  .note.pending { border-style: dashed; }
+
+  textarea { min-height: 130px; resize: vertical; line-height: 1.45; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+  .chip {
+    border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 13px; font-size: 15px;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  .save {
+    margin-top: 16px; width: 100%; padding: 17px; font-size: 18px; font-weight: 700; border: 0;
+    border-radius: var(--radius); background: var(--accent); color: var(--accent-ink);
+  }
+  .save:disabled { opacity: .45; }
+  .secondary {
+    width: 100%; padding: 15px; border-radius: var(--radius); border: 1.5px solid var(--line);
+    background: var(--card); font-weight: 600;
+  }
+
+  .setup { padding-top: 40px; }
+  .setup h1 { font-size: 26px; margin: 0 0 6px; }
+  .setup p { color: var(--muted); margin: 0 0 20px; }
+  .team { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .team .secondary[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .err { color: var(--danger); font-size: 15px; margin-top: 10px; min-height: 1em; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: var(--bg); padding: 12px 20px; border-radius: 999px; font-weight: 600;
+    opacity: 0; transition: .2s ease; pointer-events: none; z-index: 20; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .loading { text-align: center; color: var(--muted); padding: 60px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="loading" class="loading">Loading…</div>
+
+  <!-- First run: who are you? -->
+  <section id="setup" class="setup" hidden>
+    <h1>Who are you?</h1>
+    <p>We'll put your name on every note you save. You only do this once.</p>
+    <div id="teamButtons" class="team"></div>
+    <input id="meInput" placeholder="Your name" autocomplete="name" hidden>
+    <input id="pinInput" placeholder="Team PIN" inputmode="numeric" autocomplete="off" style="margin-top:10px" hidden>
+    <button id="start" class="save">Start</button>
+    <div id="setupErr" class="err"></div>
+  </section>
+
+  <!-- Search -->
+  <section id="home" hidden>
+    <header>
+      <div class="event" id="eventName"></div>
+      <button class="me" id="changeMe">You: <b id="meName"></b></button>
+    </header>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search name or practice" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    </div>
+    <button id="queuePill" class="pill" hidden></button>
+    <div id="hint" class="hint"></div>
+    <div id="results" class="list"></div>
+    <button id="addNew" class="add">+ Add someone not on the list</button>
+  </section>
+
+  <!-- Person + note -->
+  <section id="person" class="person" hidden>
+    <button class="back" id="back">‹ Back</button>
+    <div id="personHead"></div>
+    <div id="walkinFields" class="fields" hidden>
+      <input id="wName" placeholder="Full name *" autocomplete="off" autocapitalize="words">
+      <input id="wOrg" placeholder="Practice / organisation" autocomplete="off" autocapitalize="words">
+      <input id="wRole" placeholder="Role (optional)" autocomplete="off" autocapitalize="sentences">
+      <input id="wEmail" placeholder="Email (optional)" type="email" autocomplete="off" autocapitalize="off">
+    </div>
+    <div id="teamNotesWrap" hidden>
+      <h2 id="teamNotesTitle"></h2>
+      <div id="teamNotes"></div>
+    </div>
+    <h2>Your note</h2>
+    <textarea id="note" placeholder="e.g. Interested in recall automation. Wants a demo in January."></textarea>
+    <div id="chips" class="chips"></div>
+    <button id="save" class="save" disabled>Save</button>
+  </section>
+
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- tiny utilities ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem('sen:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem('sen:' + k, JSON.stringify(v)); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem('sen:' + k); } catch (e) {} }
+  };
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9@.]+/g, ' ').trim();
+  }
+  function guestKey(email, name) {
+    if (email) return String(email).toLowerCase();
+    return 'name:' + String(name || '').toLowerCase().normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function uid() {
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  function call(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+      r[fn].apply(r, args);
+    });
+  }
+  function errMsg(e) { return String((e && e.message) || e || ''); }
+  function fmtTime(ms) {
+    if (!ms) return '';
+    var d = new Date(ms), now = new Date();
+    var t = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return t;
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + t;
+  }
+  var toastTimer;
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+  function show(id) {
+    ['loading', 'setup', 'home', 'person'].forEach(function (s) { $(s).hidden = s !== id; });
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- state ---------- */
+  var S = {
+    config: null,
+    me: store.get('me', ''),
+    pin: store.get('pin', ''),
+    guests: [],
+    notes: [],
+    queue: store.get('queue', []),   // notes not yet confirmed by the sheet
+    current: null,                   // guest being viewed (null + walkin flag for new)
+    isNew: false,
+    tags: [],
+    flushing: false
+  };
+
+  /* ---------- data ---------- */
+  function indexGuest(g) {
+    g._n = norm(g.name);
+    g._nw = g._n.split(' ');
+    g._o = norm(g.practice);
+    g._ow = g._o.split(' ');
+    g._hay = [g._n, g._o, norm(g.role), norm(g.email)].join(' ');
+    return g;
+  }
+
+  function allNotes() {
+    var seen = {};
+    S.notes.forEach(function (n) { if (n.entryId) seen[n.entryId] = 1; });
+    var pending = S.queue.filter(function (q) { return !seen[q.entryId]; }).map(function (q) {
+      return { ts: q.clientTs, team: q.team, name: q.name, email: q.email, practice: q.practice,
+        role: q.role, tags: q.tags.join(', '), note: q.note, key: q.key, entryId: q.entryId, pending: true };
+    });
+    return S.notes.concat(pending);
+  }
+
+  function notesFor(key) {
+    return allNotes().filter(function (n) { return n.key === key; })
+      .sort(function (a, b) { return b.ts - a.ts; });
+  }
+
+  function guestList() {
+    // Server guests + any walk-ins still sitting in our local queue.
+    var map = {}, out = [];
+    S.guests.forEach(function (g) { map[g.key] = 1; out.push(g); });
+    S.queue.forEach(function (q) {
+      if (!map[q.key]) {
+        map[q.key] = 1;
+        out.push(indexGuest({ key: q.key, name: q.name, email: q.email, practice: q.practice, role: q.role, walkin: true }));
+      }
+    });
+    return out;
+  }
+
+  function refresh() {
+    return call('getData', S.pin).then(function (d) {
+      S.guests = d.guests.map(indexGuest);
+      S.notes = d.notes;
+      store.set('cache', { guests: d.guests, notes: d.notes });
+      if (!$('home').hidden) renderResults();
+      if (!$('person').hidden && S.current && !S.isNew) renderTeamNotes();
+    }).catch(function (e) {
+      if (errMsg(e).indexOf('PIN_INVALID') !== -1) { store.del('pin'); S.pin = ''; renderSetup('PIN changed. Enter the new team PIN.'); }
+    });
+  }
+
+  /* ---------- offline-safe save queue ---------- */
+  function persistQueue() { store.set('queue', S.queue); renderQueuePill(); }
+
+  function flush() {
+    if (S.flushing || !S.queue.length) return Promise.resolve();
+    S.flushing = true;
+    var items = S.queue.slice();
+    var chain = Promise.resolve();
+    var pinBad = false;
+    items.forEach(function (item) {
+      chain = chain.then(function () {
+        if (pinBad) return;
+        return call('saveNote', S.pin, item).then(function () {
+          S.queue = S.queue.filter(function (q) { return q.entryId !== item.entryId; });
+          persistQueue();
+        }).catch(function (e) {
+          if (errMsg(e).indexOf('PIN_INVALID') !== -1) pinBad = true;
+          // Anything else (no signal, timeout): keep it and retry later.
+        });
+      });
+    });
+    return chain.then(function () {
+      S.flushing = false;
+      if (pinBad) { store.del('pin'); S.pin = ''; renderSetup('PIN changed. Enter the new team PIN. Your notes are kept.'); return; }
+      var tried = {};
+      items.forEach(function (i) { tried[i.entryId] = 1; });
+      // A note saved while we were sending: send it now rather than in 30s.
+      if (S.queue.some(function (q) { return !tried[q.entryId]; })) return flush();
+      return refresh();
+    });
+  }
+
+  function sync() { return S.queue.length ? flush() : refresh(); }
+
+  function renderQueuePill() {
+    var n = S.queue.length, el = $('queuePill');
+    el.hidden = !n;
+    el.textContent = n === 1 ? '⏳ 1 note waiting for signal. Tap to retry.' : '⏳ ' + n + ' notes waiting for signal. Tap to retry.';
+  }
+
+  /* ---------- setup screen ---------- */
+  var pickedMe = '';
+  function renderSetup(err) {
+    show('setup');
+    var team = (S.config && S.config.team) || [];
+    pickedMe = S.me;
+    $('teamButtons').innerHTML = team.map(function (t) {
+      return '<button class="secondary" data-name="' + esc(t) + '" aria-pressed="' + (t === S.me) + '">' + esc(t) + '</button>';
+    }).join('');
+    $('teamButtons').hidden = !team.length;
+    $('meInput').hidden = !!team.length;
+    $('meInput').value = S.me;
+    $('pinInput').hidden = !(S.config && S.config.pinRequired);
+    $('pinInput').value = S.pin;
+    $('setupErr').textContent = err || '';
+  }
+  $('teamButtons').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    pickedMe = b.getAttribute('data-name');
+    Array.prototype.forEach.call(this.children, function (c) { c.setAttribute('aria-pressed', c === b); });
+  });
+  $('start').addEventListener('click', function () {
+    var team = (S.config && S.config.team) || [];
+    var me = team.length ? pickedMe : $('meInput').value.trim();
+    var pin = $('pinInput').value.trim();
+    if (!me) { $('setupErr').textContent = team.length ? 'Tap your name.' : 'Enter your name.'; return; }
+    if (S.config.pinRequired && !pin) { $('setupErr').textContent = 'Enter the team PIN.'; return; }
+    $('start').disabled = true;
+    $('setupErr').textContent = '';
+    call('getData', pin).then(function (d) {
+      S.me = me; S.pin = pin;
+      store.set('me', me); store.set('pin', pin);
+      S.guests = d.guests.map(indexGuest); S.notes = d.notes;
+      store.set('cache', { guests: d.guests, notes: d.notes });
+      goHome();
+      sync();
+    }).catch(function (e) {
+      $('setupErr').textContent = errMsg(e).indexOf('PIN_INVALID') !== -1 ? 'Wrong PIN.' : 'No connection. Try again.';
+    }).then(function () { $('start').disabled = false; });
+  });
+
+  /* ---------- home / search ---------- */
+  function goHome() {
+    S.current = null; S.isNew = false;
+    show('home');
+    $('eventName').textContent = (S.config && S.config.eventName) || 'Event notes';
+    $('meName').textContent = S.me;
+    renderQueuePill();
+    renderResults();
+  }
+
+  function score(g, tokens) {
+    var total = 0;
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i], s = 0;
+      if (g._nw.some(function (w) { return w.indexOf(t) === 0; })) s = 4;
+      else if (g._n.indexOf(t) !== -1) s = 2.5;
+      else if (g._ow.some(function (w) { return w.indexOf(t) === 0; })) s = 2;
+      else if (g._hay.indexOf(t) !== -1) s = 1;
+      else return 0;
+      total += s;
+    }
+    if (g._n.indexOf(tokens.join(' ')) === 0) total += 3;
+    return total;
+  }
+
+  function highlight(text, tokens) {
+    var safe = esc(text);
+    if (!tokens.length) return safe;
+    // Highlight word starts that match a token (accent-insensitive match on the plain text).
+    var words = String(text).split(/(\s+)/);
+    return words.map(function (w) {
+      var nw = norm(w);
+      var hit = tokens.some(function (t) { return nw && nw.indexOf(t) === 0; });
+      return hit ? '<mark>' + esc(w) + '</mark>' : esc(w);
+    }).join('');
+  }
+
+  function renderResults() {
+    var q = norm($('q').value);
+    var tokens = q ? q.split(' ') : [];
+    var list = guestList();
+    var counts = {};
+    allNotes().forEach(function (n) { counts[n.key] = (counts[n.key] || 0) + 1; });
+
+    var rows;
+    if (tokens.length) {
+      rows = list.map(function (g) { return { g: g, s: score(g, tokens) }; })
+        .filter(function (x) { return x.s > 0; })
+        .sort(function (a, b) { return b.s - a.s || a.g.name.localeCompare(b.g.name); })
+        .map(function (x) { return x.g; });
+    } else {
+      rows = list.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    }
+
+    var spoken = Object.keys(counts).length;
+    $('hint').textContent = tokens.length
+      ? (rows.length ? rows.length + ' match' + (rows.length === 1 ? '' : 'es') : 'No one found. Add them below.')
+      : list.length + ' guests · ' + spoken + ' spoken to';
+
+    $('results').innerHTML = rows.slice(0, 60).map(function (g) {
+      var c = counts[g.key] || 0;
+      var sub = [g.practice, g.role].filter(Boolean).join(' · ');
+      var badge = c ? '<span class="badge">' + c + ' note' + (c === 1 ? '' : 's') + '</span>'
+        : (g.walkin ? '<span class="badge walkin">Walk-in</span>' : '');
+      return '<button class="row" data-key="' + esc(g.key) + '"><div class="main"><div class="name">' +
+        highlight(g.name, tokens) + '</div><div class="sub">' + highlight(sub, tokens) + '</div></div>' + badge + '</button>';
+    }).join('');
+    $('addNew').textContent = tokens.length ? '+ Add "' + $('q').value.trim() + '" as a new person' : '+ Add someone not on the list';
+  }
+
+  $('q').addEventListener('input', renderResults);
+  $('q').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { var first = $('results').querySelector('.row'); if (first) first.click(); }
+  });
+  $('results').addEventListener('click', function (e) {
+    var b = e.target.closest('.row'); if (!b) return;
+    var key = b.getAttribute('data-key');
+    var g = guestList().filter(function (x) { return x.key === key; })[0];
+    if (g) openPerson(g, false);
+  });
+  $('addNew').addEventListener('click', function () { openPerson(null, true); });
+  $('changeMe').addEventListener('click', function () { renderSetup(); });
+  $('queuePill').addEventListener('click', function () { flush(); toast('Retrying…'); });
+
+  /* ---------- person / note ---------- */
+  function draftKey() { return 'draft:' + (S.isNew ? '__new__' : S.current.key); }
+
+  function openPerson(g, isNew) {
+    S.current = g; S.isNew = isNew;
+    show('person');
+    var draft = store.get(draftKey(), null) || { note: '', tags: [] };
+    S.tags = draft.tags || [];
+    $('note').value = draft.note || '';
+    $('walkinFields').hidden = !isNew;
+    if (isNew) {
+      $('personHead').innerHTML = '<h1>New person</h1>';
+      var typed = $('q').value.trim();
+      $('wName').value = draft.wName || (/@/.test(typed) ? '' : typed);
+      $('wOrg').value = draft.wOrg || '';
+      $('wRole').value = draft.wRole || '';
+      $('wEmail').value = draft.wEmail || (/@/.test(typed) ? typed : '');
+      $('teamNotesWrap').hidden = true;
+    } else {
+      $('personHead').innerHTML =
+        '<h1>' + esc(g.name) + '</h1>' +
+        '<div class="org">' + esc([g.practice, g.role].filter(Boolean).join(' · ')) + '</div>' +
+        (g.email ? '<div class="email">' + esc(g.email) + '</div>' : '');
+      renderTeamNotes();
+    }
+    renderChips();
+    updateSaveState();
+    var hasNotes = !isNew && notesFor(g.key).length > 0;
+    // Jump straight to typing unless there are colleague notes to read first.
+    if (isNew) $('wName').focus();
+    else if (!hasNotes) $('note').focus();
+  }
+
+  function renderTeamNotes() {
+    var list = notesFor(S.current.key);
+    $('teamNotesWrap').hidden = !list.length;
+    $('teamNotesTitle').textContent = 'Already spoken to · ' + list.length;
+    $('teamNotes').innerHTML = list.map(function (n) {
+      return '<div class="note' + (n.pending ? ' pending' : '') + '"><div class="meta"><b>' + esc(n.team) + '</b> · ' +
+        esc(fmtTime(n.ts)) + (n.pending ? ' · sending…' : '') + '</div>' +
+        (n.tags ? '<div class="tags">' + esc(n.tags) + '</div>' : '') +
+        (n.note ? '<div class="body">' + esc(n.note) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+
+  function renderChips() {
+    var tags = (S.config && S.config.quickTags) || [];
+    $('chips').innerHTML = tags.map(function (t) {
+      return '<button class="chip" data-tag="' + esc(t) + '" aria-pressed="' + (S.tags.indexOf(t) !== -1) + '">' + esc(t) + '</button>';
+    }).join('');
+  }
+  $('chips').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (!b) return;
+    var t = b.getAttribute('data-tag');
+    var i = S.tags.indexOf(t);
+    if (i === -1) S.tags.push(t); else S.tags.splice(i, 1);
+    b.setAttribute('aria-pressed', i === -1);
+    saveDraft(); updateSaveState();
+  });
+
+  function saveDraft() {
+    var d = { note: $('note').value, tags: S.tags };
+    if (S.isNew) { d.wName = $('wName').value; d.wOrg = $('wOrg').value; d.wRole = $('wRole').value; d.wEmail = $('wEmail').value; }
+    store.set(draftKey(), d);
+  }
+  function updateSaveState() {
+    var hasContent = $('note').value.trim() || S.tags.length;
+    var hasName = !S.isNew || $('wName').value.trim();
+    $('save').disabled = !(hasContent && hasName);
+  }
+  ['note', 'wName', 'wOrg', 'wRole', 'wEmail'].forEach(function (id) {
+    $(id).addEventListener('input', function () { saveDraft(); updateSaveState(); });
+  });
+
+  $('back').addEventListener('click', goHome);
+
+  $('save').addEventListener('click', function () {
+    if ($('save').disabled) return;
+    var g = S.current, item;
+    if (S.isNew) {
+      var name = $('wName').value.trim();
+      var email = $('wEmail').value.trim().toLowerCase();
+      item = { name: name, email: email, practice: $('wOrg').value.trim(), role: $('wRole').value.trim(), walkin: true, key: guestKey(email, name) };
+    } else {
+      item = { name: g.name, email: g.email, practice: g.practice, role: g.role, walkin: !!g.walkin, key: g.key };
+    }
+    item.team = S.me;
+    item.note = $('note').value.trim();
+    item.tags = S.tags.slice();
+    item.entryId = uid();
+    item.clientTs = Date.now();
+
+    S.queue.push(item);
+    persistQueue();
+    store.del(draftKey());
+    $('q').value = '';
+    goHome();
+    toast('Saved ✓');
+    flush();
+  });
+
+  /* ---------- background sync ---------- */
+  setInterval(function () { if (!document.hidden) sync(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
+  window.addEventListener('online', function () { flush(); });
+
+  /* ---------- boot ---------- */
+  var cache = store.get('cache', null);
+  if (cache) { S.guests = cache.guests.map(indexGuest); S.notes = cache.notes; }
+
+  call('getConfig').then(function (cfg) {
+    S.config = cfg;
+    store.set('config', cfg);
+    if (!S.me || (cfg.pinRequired && !S.pin)) return renderSetup();
+    goHome();
+    sync();
+  }).catch(function () {
+    // No signal at boot: use what we had last time.
+    S.config = store.get('config', null);
+    if (S.config && S.me) { goHome(); toast('Offline: showing saved list'); }
+    else { $('loading').textContent = 'No connection. Reconnect and reload.'; }
+  });
+})();
+</script>
+</body>
+</html>
