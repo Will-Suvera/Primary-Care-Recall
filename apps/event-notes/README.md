@@ -19,9 +19,11 @@ the guest-list Google Sheet.
   - green: *All 5 of your notes are in the sheet · checked 17:41*
   - amber: *1 note NOT sent yet · kept on this phone · tap to retry*
 - **Bad signal is fine.** Unsent notes stay on the phone, labelled *not sent
-  yet*, and go automatically when signal returns, even after the app is
-  closed. They are never sent twice. In private browsing the phone can't
-  keep them, and a red banner says so.
+  yet*, and go automatically when signal returns. They are never sent twice.
+  **On iPhone, keep the app open until it's green:** a home-screen web app
+  loses this page's saved data when it's closed (swiped away), so unsent
+  notes go with it. Android Chrome keeps them. In private browsing the phone
+  can't keep them at all, and a red banner says so.
 - **Drafts survive.** If you leave half-way through a note, it's still there
   when you come back.
 
@@ -72,13 +74,28 @@ itself, because it gets overwritten; edit Notes instead.
    - **Deploy**, approve the permissions prompt, and copy the `/exec` URL.
 7. Send that URL to the team.
 
+### Personal links (so nobody has to sign in each time)
+
+An iPhone home-screen web app forgets this page's saved data every time it's
+closed, so a plain link would ask "Who are you?" on every launch. Give each
+person a **personal link** with their name and the PIN built in instead:
+
+1. Reload the sheet, then use **Event notes → Make personal team links** and
+   paste the `/exec` link.
+2. A **Team links** tab appears with one link per person. Send each person
+   their own link privately, because it includes the PIN.
+
+Personal links also open faster: the guest list comes with the page instead
+of loading afterwards. The plain `/exec` link still works and asks for a name
+and PIN.
+
 ### Add to home screen
 
-- **iPhone:** open the link in **Safari** → Share → **Add to Home Screen**.
+- **iPhone:** open the personal link in **Safari** → Share → **Add to Home Screen**.
 - **Android:** open in **Chrome** → ⋮ → **Add to Home screen**.
 
-On first open each person enters their name (and the PIN). The phone
-remembers it from then on.
+If someone added the plain link earlier, they should delete that icon and
+add their personal link instead.
 
 ### Changing the code later
 

@@ -47,12 +47,39 @@ const NOTES_HEADERS = [
 /* Web app entry point                                                 */
 /* ------------------------------------------------------------------ */
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
+/**
+ * Personal links (?me=Caitlin&k=PIN) carry the person's name and the PIN, so
+ * the phone never has to remember them. That matters on iPhone: a
+ * home-screen web app loses this page's saved data every time it's closed.
+ * The guest list and notes are included in this first response, which saves
+ * two more trips to Google before anything shows.
+ */
+function doGet(e) {
+  const t = HtmlService.createTemplateFromFile('Index');
+  t.boot = bootJson_((e && e.parameter) || {});
+  return t.evaluate()
     .setTitle('Suvera Event Notes')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .addMetaTag('apple-mobile-web-app-capable', 'yes')
     .addMetaTag('mobile-web-app-capable', 'yes');
+}
+
+function bootJson_(params) {
+  const config = getConfig();
+  let me = clean_(params.me, 80);
+  if (me && config.team.length) {
+    me = config.team.filter(function (n) { return n.toLowerCase() === me.toLowerCase(); })[0] || '';
+  }
+  const pin = clean_(params.k, 40);
+  const pinOk = !config.pinRequired || (pin !== '' && pin === getPin_());
+  const boot = {
+    config: config,
+    me: me,
+    pin: pinOk ? pin : '',
+    data: pinOk ? getData(pin) : null,
+  };
+  // Safe to drop inside a <script> tag.
+  return JSON.stringify(boot).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,7 +211,41 @@ function requestByGuestRebuild_(ss) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Event notes')
     .addItem('Rebuild "By guest" tab', 'rebuildByGuest')
+    .addItem('Make personal team links', 'makeTeamLinks')
     .addToUi();
+}
+
+/**
+ * Sheet menu: asks for the web app link and writes a "Team links" tab with
+ * one personal link per team member (name + PIN built in). Send each person
+ * their own link to add to their home screen.
+ */
+function makeTeamLinks() {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt('Make personal team links',
+    'Paste the web app link (Deploy → Manage deployments → Web app URL, ends in /exec):',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  const base = String(res.getResponseText() || '').trim().split('?')[0];
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(base)) {
+    ui.alert('That doesn\'t look like the web app link. It should start with https://script.google.com/ and end in /exec.');
+    return;
+  }
+  const pin = getPin_();
+  const team = getConfig().team;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Team links');
+  if (!sheet) sheet = ss.insertSheet('Team links');
+  sheet.clearContents();
+  const rows = [['Name', 'Personal link (send privately: it includes the PIN)']].concat(team.map(function (name) {
+    return [name, base + '?me=' + encodeURIComponent(name) + (pin ? '&k=' + encodeURIComponent(pin) : '')];
+  }));
+  sheet.getRange(1, 1, rows.length, 2).setValues(rows);
+  sheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+  sheet.setColumnWidth(1, 120);
+  sheet.setColumnWidth(2, 720);
+  ss.setActiveSheet(sheet);
+  ui.alert('Done: ' + team.length + ' links in the "Team links" tab. Each person opens theirs in Safari (iPhone) or Chrome (Android), then Add to Home Screen.');
 }
 
 /** Keep "By guest" in step when someone fixes a typo in Notes or Guests. */

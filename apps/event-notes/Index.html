@@ -207,6 +207,11 @@
 <div id="toast" class="toast"></div>
 
 <script>
+  // Filled in by doGet: config, the person's name + PIN from their personal
+  // link, and the guest list + notes, so nothing else has to load first.
+  var BOOT = <?!= boot ?>;
+</script>
+<script>
 (function () {
   'use strict';
 
@@ -372,7 +377,7 @@
       if (pinBad) { store.del('pin'); S.pin = ''; renderSetup('PIN changed. Enter the new team PIN. Your unsent notes are kept on this phone.'); return; }
       if (sent && !failed) toast(sent === 1 ? 'Saved to sheet' : sent + ' notes saved to sheet', 'good');
       else if (sent && failed) toast(sent + ' saved to sheet, ' + failed + ' not sent yet. Will retry.', 'warn', 4000);
-      else if (failed && loudNow) toast('Not sent yet: no signal. Kept on this phone, will retry automatically.', 'warn', 4500);
+      else if (failed && loudNow) toast('Not sent yet: no signal. Keep the app open and it will retry automatically.', 'warn', 4500);
       renderSyncStatus();
       if (!$('home').hidden) renderResults();
       if (!$('person').hidden && S.current && !S.isNew) renderTeamNotes();
@@ -397,7 +402,7 @@
       el.className = 'status warn';
       el.innerHTML = '<span class="dot"></span><span>' + (S.flushing
         ? 'Sending ' + (n === 1 ? '1 note' : n + ' notes') + '…'
-        : (n === 1 ? '1 note' : n + ' notes') + ' NOT sent yet · kept on this phone · tap to retry') + '</span>';
+        : (n === 1 ? '1 note' : n + ' notes') + ' NOT sent yet · keep this app open · tap to retry') + '</span>';
       el.hidden = false;
     } else if (mine) {
       el.className = 'status good';
@@ -647,6 +652,24 @@
   /* ---------- boot ---------- */
   var cache = store.get('cache', null);
   if (cache) { S.guests = cache.guests.map(indexGuest); S.notes = cache.notes; }
+
+  var boot = window.BOOT;
+  if (boot && boot.config) {
+    S.config = boot.config;
+    store.set('config', boot.config);
+    // A personal link wins over whatever this phone remembered.
+    if (boot.me) { S.me = boot.me; store.set('me', boot.me); }
+    if (boot.pin) { S.pin = boot.pin; store.set('pin', boot.pin); }
+    if (boot.data) {
+      S.guests = boot.data.guests.map(indexGuest);
+      S.notes = boot.data.notes;
+      S.lastSync = Date.now();
+      store.set('cache', { guests: boot.data.guests, notes: boot.data.notes });
+    }
+    if (!S.me || (S.config.pinRequired && !S.pin)) renderSetup();
+    else { goHome(); if (S.queue.length || !boot.data) sync(); }
+    return;
+  }
 
   call('getConfig').then(function (cfg) {
     S.config = cfg;
