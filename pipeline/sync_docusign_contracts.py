@@ -1084,7 +1084,9 @@ def main():
         pdf = ds_download_pdf(token, acct, base, env_id)
         parsed = parse_contract(pdf)
         if not is_recall_contract(parsed):
-            print(f"skipping envelope {env_id} '{subj[:70]}' — not a Recall agreement")
+            missing = [k for k in ("customer", "ods_codes", "register", "price_y1", "annual_fee") if not parsed[k]]
+            print(f"skipping envelope {env_id} '{subj[:70]}' — not a Recall agreement "
+                  f"(unparsed: {', '.join(missing)})")
             continue
         print(f"envelope {env_id}: '{subj[:80]}' completed {signed}")
         process(pdf, env_id, signed, enrich, icb_code, dry_run)
