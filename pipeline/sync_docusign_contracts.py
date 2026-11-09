@@ -179,7 +179,12 @@ def parse_contract(pdf_bytes):
     """Extract Schedule 1 facts from the signed MSA/DPA PDF."""
     from pypdf import PdfReader
     import io
-    text = " ".join((pg.extract_text() or "") for pg in PdfReader(io.BytesIO(pdf_bytes)).pages)
+    return parse_contract_text(
+        " ".join((pg.extract_text() or "") for pg in PdfReader(io.BytesIO(pdf_bytes)).pages))
+
+
+def parse_contract_text(text):
+    """parse_contract on the PDF's extracted text (split out so tests need no PDF)."""
     text = re.sub(r"[\ue000-\uf8ff]", "", text)  # private-use glyphs the PDF fonts leave behind
     text = re.sub(r"\s+", " ", text)
     out = {"customer": "", "ods_codes": [], "practices": [], "commencement": "",
@@ -264,7 +269,10 @@ def parse_contract(pdf_bytes):
     # Commercial Details" names the Buyer, then a Customer table that closes on
     # "Totals: 14,427 £10,820.25". Schedule 1 wins over the clause wording
     # (clause 2.1 always says "24 months, or ... 36 months").
-    i = text.find("Schedule 1 - Parties and Commercial Details")
+    # The Nov 2026 template writes the heading with an em dash and puts Initial
+    # Term straight after the Commencement Date (no Large Register Discount row).
+    s1_head = re.search(r"Schedule 1\s*[-\u2013\u2014]\s*Parties and Commercial Details", text)
+    i = s1_head.start() if s1_head else -1
     if i >= 0 and "Buyer Name" in text[i:]:
         s1 = re.sub(r"Docusign Envelope ID: [0-9A-Fa-f-]{36}(?: \d{1,2}/\d{1,2}/\d{4} \| \d{1,2}:\d{2} \w+)?",
                     "", text[i:])
@@ -276,6 +284,10 @@ def parse_contract(pdf_bytes):
         if m:
             v = m.group(1).strip()
             out["commencement"] = "" if "@" in v else v[:160]
+        else:  # Nov 2026 template: a plain date, then the Initial Term row
+            m = re.search(r"Commencement Date\s*(.{1,40}?)\s*(?:Initial Term|Cost per patient)", s1)
+            if m and "@" not in m.group(1):
+                out["commencement"] = m.group(1).strip()
         m = re.search(r"Initial Term\s+(\d+) months", s1)
         if m:
             out["term_months"] = int(m.group(1))
