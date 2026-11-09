@@ -73,7 +73,8 @@ CS_PIPELINE_ID = "2391616730"
 PRE_SIGNED_STAGES = {"4489053409": "Signed-up List", "5147362520": "Demo Booked",
                      "5017986288": "Demo Held", "4489053410": "Proposal Sent",
                      "5898844361": "Docusign Sent"}
-SLACK_RECALL_CHANNEL = os.environ.get("SLACK_RECALL_CHANNEL", "C0A3YNKUTGB")  # #recall-growth
+# `or`, not a .get default: the workflow passes an unset secret as an empty string
+SLACK_RECALL_CHANNEL = os.environ.get("SLACK_RECALL_CHANNEL") or "C0A3YNKUTGB"  # #recall-growth
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
 # Completed envelopes that must NOT go through the chain (superseded contracts etc.)
 SKIP_ENVELOPES = {
