@@ -126,7 +126,7 @@ const PaidChip = ({ p }) => (p.paid ? <span className="su-status good lir-paid">
 // (for a cell) who was using Suvera Recall regularly at that point.
 // leave a practice out of the cohorts (shared, saved to Neon)
 const ExcludeBtn = ({ ods, onExclude }) => (
-  <button className="lir-excl-btn" title="Leave out of the cohorts, cards and watchlist (e.g. a test site or not a real customer). Everyone sees this."
+  <button className="lir-excl-btn" title="Leave out of the cohorts, cards and watchlist (e.g. a test site or not a real customer). Only changes your own view."
     onClick={(e) => { e.stopPropagation(); onExclude(ods, true); }}>Exclude</button>
 );
 
@@ -412,7 +412,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
                 <tr className="lir-manage">
                   <td colSpan={2 + cols.length}>
                     <div className="lir-manage-h">
-                      <b>Who counts in {fmtMonth(c.month)}</b> <span className="st-faint">· untick a practice to leave it out of the cohorts, cards and watchlist (everyone sees this)</span>
+                      <b>Who counts in {fmtMonth(c.month)}</b> <span className="st-faint">· untick a practice to leave it out of the cohorts, cards and watchlist (only in your view)</span>
                       <button className="ov-more" onClick={() => setEditing(null)}>Done</button>
                     </div>
                     <ul>
@@ -453,7 +453,7 @@ export default function LirCohort({ lir, generatedAt, auth }) {
       <p className="st-note">
         {COPY[metric].note(k)} “Signing month” = by the end of the month they signed, which shows onboarding
         speed (practices should be live within 2–3 weeks). The current month is left out until it's complete. To leave a practice out of everything
-        on this tab (a test site, or not a real customer), click the count in “Practices signed” and untick it; everyone sees the change. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
+        on this tab (a test site, or not a real customer), click the count in “Practices signed” and untick it; this only changes your own view. Blank cells = before the Omni data starts ({fmtDay(lir.from)}). Practices
         recalling with no Suvera Recall deal in HubSpot are grouped by the month of their first recall.
       </p>
 

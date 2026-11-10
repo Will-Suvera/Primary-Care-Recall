@@ -37,6 +37,8 @@ if (!DATABASE_URL) {
 }
 const sql = neon(DATABASE_URL);
 const PORT = process.env.ONBOARDING_API_PORT || 5175;
+// local dev has no Google sign-in: whose Retention exclusions to show (they are per person)
+const LOCAL_USER = loadEnv("LOCAL_USER_EMAIL") || "will@suvera.co.uk";
 
 // In dev the board + visits come from the locally-generated public/data files
 // (prod serves them from the bundled API instead, auth-gated). Read fresh per
@@ -105,8 +107,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/onboarding/dropped") return send(await getDropped(sql));
     if (req.method === "POST" && p === "/api/onboarding/dropped") return send(await markDropped(sql, setDealDropped, await readBody(req)));
 
-    if (req.method === "GET" && p === "/api/onboarding/lir-excluded") return send(await getLirExcluded(sql));
-    if (req.method === "POST" && p === "/api/onboarding/lir-excluded") return send(await setLirExcluded(sql, await readBody(req)));
+    if (req.method === "GET" && p === "/api/onboarding/lir-excluded") return send(await getLirExcluded(sql, { email: LOCAL_USER }));
+    if (req.method === "POST" && p === "/api/onboarding/lir-excluded") return send(await setLirExcluded(sql, { ...(await readBody(req)), email: LOCAL_USER }));
     if (req.method === "GET" && p === "/api/onboarding/practices") return send(await getPractices(sql));
     if (req.method === "POST" && p === "/api/onboarding/practices") return send(await createPractice(sql, await readBody(req)));
     if (req.method === "PATCH" && p === "/api/onboarding/practices") return send(await setPracticeOds(sql, await readBody(req)));

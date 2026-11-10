@@ -187,28 +187,54 @@ export async function hideActivity(sql, { ods, activity_key, by = null }) {
 /* ---------------- retention: practices left out of the cohorts ---------------- */
 // Like the book's "ICP customers acquired": practices that were never a real fit
 // (test sites, signed but not a genuine customer) are left out of the Retention
-// tab's cohorts, cards and watchlist. A shared list, so everyone sees the same
-// cohorts. The table creates itself, so there's no migration step.
-const ensureLirExcluded = (sql) => sql`create table if not exists lir_excluded (
-  ods text primary key, excluded_by text, excluded_at timestamptz not null default now())`;
+// tab's cohorts, cards and watchlist. PER PERSON (Will, 2026-11-10): each signed-in
+// user has their own list, keyed by their Google email, so one person's edits
+// don't change anyone else's view. The tables create themselves (no migration step).
+// lir_excluded is the old shared list (first name only): a person's rows there are
+// moved into their own list the first time they load it.
+const ensureLirExcluded = async (sql) => {
+  await sql`create table if not exists lir_excluded (
+    ods text primary key, excluded_by text, excluded_at timestamptz not null default now())`;
+  await sql`create table if not exists lir_excluded_user (
+    owner text not null, ods text not null, excluded_at timestamptz not null default now(),
+    primary key (owner, ods))`;
+};
+const ownerOf = (email) => String(email || "").trim().toLowerCase() || "anonymous";
 
-// GET /api/onboarding/lir-excluded → { ods: {by, at} }
-export async function getLirExcluded(sql) {
-  await ensureLirExcluded(sql);
-  const rows = await sql`select ods, excluded_by, excluded_at from lir_excluded`;
-  return result(Object.fromEntries(rows.map((r) => [r.ods, { by: r.excluded_by, at: r.excluded_at }])));
+// one-off move of this person's rows from the old shared list into their own
+async function claimLegacyLirExcluded(sql, owner) {
+  const first = firstNameFromEmail(owner);
+  if (!first) return;
+  const moved = await sql`delete from lir_excluded where lower(excluded_by) = lower(${first})
+    returning ods, excluded_at`;
+  for (const r of moved) {
+    await sql`insert into lir_excluded_user (owner, ods, excluded_at) values (${owner}, ${r.ods}, ${r.excluded_at})
+      on conflict (owner, ods) do nothing`;
+  }
 }
 
-// POST /api/onboarding/lir-excluded {ods, excluded} → leave a practice out (true) or put it back (false)
-export async function setLirExcluded(sql, { ods, excluded, by = null }) {
+// GET /api/onboarding/lir-excluded → { ods: {by, at} } for the signed-in user only
+export async function getLirExcluded(sql, { email = null } = {}) {
+  await ensureLirExcluded(sql);
+  const owner = ownerOf(email);
+  await claimLegacyLirExcluded(sql, owner);
+  const rows = await sql`select ods, excluded_at from lir_excluded_user where owner = ${owner}`;
+  const by = firstNameFromEmail(email) || "you";
+  return result(Object.fromEntries(rows.map((r) => [r.ods, { by, at: r.excluded_at }])));
+}
+
+// POST /api/onboarding/lir-excluded {ods, excluded} → leave a practice out (true) or put
+// it back (false), in the signed-in user's own list
+export async function setLirExcluded(sql, { ods, excluded, email = null }) {
   const code = String(ods || "").trim().toUpperCase();
   if (!code) return result({ error: "ods is required" }, 400);
   await ensureLirExcluded(sql);
+  const owner = ownerOf(email);
   if (excluded) {
-    await sql`insert into lir_excluded (ods, excluded_by) values (${code}, ${by})
-      on conflict (ods) do update set excluded_by = excluded.excluded_by, excluded_at = now()`;
+    await sql`insert into lir_excluded_user (owner, ods) values (${owner}, ${code})
+      on conflict (owner, ods) do update set excluded_at = now()`;
   } else {
-    await sql`delete from lir_excluded where ods = ${code}`;
+    await sql`delete from lir_excluded_user where owner = ${owner} and ods = ${code}`;
   }
   return result({ ok: true, ods: code, excluded: !!excluded });
 }

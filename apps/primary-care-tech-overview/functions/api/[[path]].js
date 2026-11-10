@@ -220,7 +220,7 @@ export async function onRequest(context) {
       if (sub === "/hidden") return J(await getHiddenActivity(sql));
       if (sub === "/dropped") return J(await getDropped(sql));
       if (sub === "/practices") return J(await getPractices(sql));
-      if (sub === "/lir-excluded") return J(await getLirExcluded(sql));
+      if (sub === "/lir-excluded") return J(await getLirExcluded(sql, { email: auth.email }));
       if (sub === "/ods-lookup") {
         const found = await lookupOds(url.searchParams.get("ods"));
         return J(found ? { status: 200, body: found } : { status: 404, body: { error: "not found" } });
@@ -273,7 +273,7 @@ export async function onRequest(context) {
     if (req.method === "POST" && sub === "/lir-excluded") {
       const auth = await gate(); if (!auth) return unauth();
       const body = await req.json();
-      return J(await setLirExcluded(sql, { ods: body.ods, excluded: body.excluded, by: firstNameFromEmail(auth.email) || null }));
+      return J(await setLirExcluded(sql, { ods: body.ods, excluded: body.excluded, email: auth.email }));
     }
     if (sub === "/practices" && ["POST", "PATCH", "DELETE"].includes(req.method)) {
       const auth = await gate(); if (!auth) return unauth();
