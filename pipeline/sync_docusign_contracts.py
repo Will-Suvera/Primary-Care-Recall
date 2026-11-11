@@ -29,9 +29,11 @@ Auth: GOOGLE_SHEETS_SA_JSON (service-account JSON) or the repo-root key file.
 
 Finally the matched deal is moved to "DPA Signed Onboard Ready" (only from an
 earlier Primary Care Tech Growth stage), its name gets the "PAID - " prefix
-(the paying-customer flag for ARR; "PAID (Trial First) - " for an opt-in trial), and a card is posted to Slack
-#recall-growth (SLACK_BOT_TOKEN, SLACK_RECALL_CHANNEL) with buttons for the
-HubSpot deal, the signed PDF on Drive and the DocuSign envelope.
+(the paying-customer flag for ARR; "PAID (Trial First) - " for an opt-in trial). The Slack card to
+#recall-growth (buttons for the HubSpot deal, the signed PDF on Drive and the
+DocuSign envelope) is switched OFF (Will, 11 Nov 2026) — set
+SLACK_NOTIFY_CONTRACTS=1 alongside SLACK_BOT_TOKEN / SLACK_RECALL_CHANNEL to
+turn it back on.
 
 Sources, in order: (1) the DocuSign "Completed:" emails in Will's inbox, read
 through the Apps Script web app (DRIVE_WEBAPP_URL, action=list/fetch) — works
@@ -75,6 +77,8 @@ PRE_SIGNED_STAGES = {"4489053409": "Signed-up List", "5147362520": "Demo Booked"
                      "5898844361": "Docusign Sent"}
 # `or`, not a .get default: the workflow passes an unset secret as an empty string
 SLACK_RECALL_CHANNEL = os.environ.get("SLACK_RECALL_CHANNEL") or "C0A3YNKUTGB"  # #recall-growth
+# Off by default: Will asked for the "PAID - ... contract has been signed" cards to stop (11 Nov 2026)
+SLACK_NOTIFY_CONTRACTS = os.environ.get("SLACK_NOTIFY_CONTRACTS") == "1"
 SUVERA_ODS = {"R7U1N"}  # Suvera's own code appears in every DPA — never a customer
 # Completed envelopes that must NOT go through the chain (superseded contracts etc.)
 SKIP_ENVELOPES = {
@@ -515,6 +519,9 @@ def hubspot_mark_paid(deal_id, deal_name, opt_in_trial, dry_run):
 def slack_notify(deal_id, deal_name, parsed, covered, signed_date, links, moved_from, dry_run):
     """Post the signed contract to #recall-growth, mirroring the HubSpot
     "<deal> - Planner DPA has been signed" card: one headline + link buttons."""
+    if not SLACK_NOTIFY_CONTRACTS:
+        print("  Slack: contract cards are switched off (SLACK_NOTIFY_CONTRACTS=1 re-enables) — not posting")
+        return
     token = os.environ.get("SLACK_BOT_TOKEN", "")
     if not token:
         print("  Slack: SLACK_BOT_TOKEN not set — skipping the #recall-growth post")
